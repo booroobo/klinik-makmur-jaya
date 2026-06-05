@@ -51,7 +51,7 @@ export default function Sidebar({ active }) {
         <h1 className="text-xl font-bold text-primary">Klinik MJ</h1>
         <p className="text-xs text-on-surface-variant">{roleLabel}</p>
       </div>
-      <nav className="flex-grow space-y-1">
+      <nav className="flex-grow space-y-1 overflow-y-auto min-h-0 custom-scrollbar">
         {visibleNavItems.map((item) => (
           <Link
             key={item.id}

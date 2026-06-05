@@ -17,10 +17,15 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(\Illuminate\Http\Request $request): JsonResponse
     {
         $today = now()->startOfDay();
         $validRevenueQuery = $this->validRevenueOrders();
+
+        $expiringDays = $request->integer('expiring_days', 90);
+        if (!in_array($expiringDays, [30, 60, 90], true)) {
+            $expiringDays = 90;
+        }
 
         return response()->json([
             'data' => [
@@ -36,7 +41,7 @@ class DashboardController extends Controller
                 'orders_by_status' => $this->ordersByStatus(),
                 'recent_orders' => $this->recentOrders(),
                 'critical_stock_medicines' => $this->criticalStockMedicines(),
-                'expiring_batches' => $this->expiringBatches(),
+                'expiring_batches' => $this->expiringBatches($expiringDays),
                 'top_selling_medicines' => $this->topSellingMedicines(),
                 'sales_daily' => $this->dailySales(30),
                 'sales_monthly' => $this->monthlySales(6),
@@ -132,13 +137,13 @@ class DashboardController extends Controller
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function expiringBatches(): array
+    private function expiringBatches(int $days = 90): array
     {
         return MedicineBatch::query()
             ->with('medicine:id,name,is_active')
             ->where('quantity', '>', 0)
             ->whereDate('expired_date', '>=', now()->toDateString())
-            ->whereDate('expired_date', '<=', now()->copy()->addDays(90)->toDateString())
+            ->whereDate('expired_date', '<=', now()->copy()->addDays($days)->toDateString())
             ->whereHas('medicine', fn ($query) => $query->where('is_active', true))
             ->orderBy('expired_date')
             ->orderBy('id')

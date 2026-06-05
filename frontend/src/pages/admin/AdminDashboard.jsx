@@ -89,6 +89,7 @@ export default function AdminDashboard() {
   const [dashboard, setDashboard] = useState(emptyDashboard)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [expiringDays, setExpiringDays] = useState(90)
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -96,7 +97,9 @@ export default function AdminDashboard() {
       setError('')
 
       try {
-        const response = await api.get('/admin/dashboard')
+        const response = await api.get('/admin/dashboard', {
+          params: { expiring_days: expiringDays },
+        })
         setDashboard(response.data.data || emptyDashboard)
       } catch (err) {
         setError(err.response?.data?.message || 'Gagal memuat dashboard.')
@@ -106,7 +109,7 @@ export default function AdminDashboard() {
     }
 
     fetchDashboard()
-  }, [])
+  }, [expiringDays])
 
   const dailyChart = useMemo(() => ({
     labels: dashboard.sales_daily.map((row) => row.label),
@@ -187,7 +190,7 @@ export default function AdminDashboard() {
                 <StatCard icon="groups" label="Pelanggan" value={dashboard.summary.customers} />
                 <StatCard icon="medication" label="Obat Aktif" value={dashboard.summary.active_medicines} />
                 <StatCard icon="inventory_2" label="Stok Kritis" value={dashboard.critical_stock_medicines.length} tone={dashboard.critical_stock_medicines.length > 0 ? 'danger' : 'primary'} />
-                <StatCard icon="event_busy" label="Batch Expired 90 Hari" value={dashboard.expiring_batches.length} tone={dashboard.expiring_batches.length > 0 ? 'warning' : 'primary'} />
+                <StatCard icon="event_busy" label={`Batch Expired ${expiringDays} Hari`} value={dashboard.expiring_batches.length} tone={dashboard.expiring_batches.length > 0 ? 'warning' : 'primary'} />
                 <StatCard icon="shopping_cart" label="Order Aktif" value={activeOrderCount(dashboard.orders_by_status)} />
               </div>
 
@@ -264,9 +267,23 @@ export default function AdminDashboard() {
               </div>
 
               <section className="rounded-xl border border-outline-variant bg-white p-6 shadow-sm">
-                <h4 className="mb-5 font-bold">Obat Mendekati Kedaluwarsa 30/60/90 Hari</h4>
+                <div className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                  <h4 className="font-bold">Obat Mendekati Kedaluwarsa {expiringDays} Hari</h4>
+                  <label className="text-sm font-semibold text-on-surface">
+                    Filter Hari:
+                    <select
+                      className="ml-2 rounded-lg border border-outline-variant bg-white px-3 py-1.5 font-normal outline-none focus:border-primary"
+                      value={expiringDays}
+                      onChange={(e) => setExpiringDays(Number(e.target.value))}
+                    >
+                      <option value="30">30 Hari</option>
+                      <option value="60">60 Hari</option>
+                      <option value="90">90 Hari</option>
+                    </select>
+                  </label>
+                </div>
                 <DataTable
-                  emptyText="Tidak ada batch yang kedaluwarsa dalam 90 hari."
+                  emptyText={`Tidak ada batch yang kedaluwarsa dalam ${expiringDays} hari.`}
                   headers={['Obat', 'Batch', 'Expired', 'Sisa Hari', 'Qty', 'Bucket']}
                   rows={dashboard.expiring_batches.map((batch) => [
                     batch.medicine_name,

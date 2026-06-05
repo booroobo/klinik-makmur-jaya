@@ -53,6 +53,7 @@ export default function Reports() {
   const [exporting, setExporting] = useState('')
   const [queueing, setQueueing] = useState('')
   const [queueMessage, setQueueMessage] = useState('')
+  const [downloadingJobId, setDownloadingJobId] = useState(null)
 
   const fetchReports = useCallback(async () => {
     setLoading(true)
@@ -156,6 +157,7 @@ export default function Reports() {
       const response = await api.get('/admin/reports/sales/export/' + type, {
         params: buildParams(filters),
         responseType: 'blob',
+        headers: { Accept: '*/*' },
       })
       const extension = type === 'pdf' ? 'pdf' : 'xls'
       const mime = type === 'pdf' ? 'application/pdf' : 'application/vnd.ms-excel'
@@ -169,7 +171,18 @@ export default function Reports() {
       link.remove()
       window.URL.revokeObjectURL(url)
     } catch (err) {
-      setError(err.response?.data?.message || 'Gagal mengunduh export.')
+      // When responseType is blob, error response is also a blob — parse it
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text()
+          const json = JSON.parse(text)
+          setError(json.message || 'Gagal mengunduh export.')
+        } catch {
+          setError('Gagal mengunduh export.')
+        }
+      } else {
+        setError(err.response?.data?.message || 'Gagal mengunduh export.')
+      }
     } finally {
       setExporting('')
     }
@@ -191,6 +204,43 @@ export default function Reports() {
       setError(err.response?.data?.message || 'Gagal mengantrikan laporan.')
     } finally {
       setQueueing('')
+    }
+  }
+
+  const downloadQueuedReport = async (job) => {
+    setDownloadingJobId(job.id)
+    setError('')
+
+    try {
+      const response = await api.get('/admin/reports/queue/' + job.id + '/download', {
+        responseType: 'blob',
+        headers: { Accept: '*/*' },
+      })
+      const extension = job.format === 'excel' ? 'xls' : 'pdf'
+      const mime = job.format === 'excel' ? 'application/vnd.ms-excel' : 'application/pdf'
+      const blob = new Blob([response.data], { type: mime })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = job.file_name || ('laporan-penjualan.' + extension)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text()
+          const json = JSON.parse(text)
+          setError(json.message || 'Gagal mengunduh file laporan.')
+        } catch {
+          setError('Gagal mengunduh file laporan.')
+        }
+      } else {
+        setError(err.response?.data?.message || 'Gagal mengunduh file laporan.')
+      }
+    } finally {
+      setDownloadingJobId(null)
     }
   }
 
@@ -243,7 +293,7 @@ export default function Reports() {
                         </div>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        {job.download_url ? <a className="font-bold text-primary hover:underline" href={job.download_url}>Download</a> : <span className="text-on-surface-variant">Menunggu</span>}
+                        {job.download_url ? <button className="font-bold text-primary hover:underline disabled:opacity-50" type="button" disabled={downloadingJobId === job.id} onClick={() => downloadQueuedReport(job)}>{downloadingJobId === job.id ? 'Mengunduh...' : 'Download'}</button> : <span className="text-on-surface-variant">Menunggu</span>}
                         {job.error_message && <p className="mt-1 text-xs text-error">{job.error_message}</p>}
                       </td>
                     </tr>

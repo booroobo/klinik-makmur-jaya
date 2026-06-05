@@ -27,7 +27,7 @@ Route::get('/catalog/medicines', [CatalogController::class, 'index']);
 Route::get('/catalog/medicines/autocomplete', [CatalogController::class, 'autocomplete']);
 Route::get('/catalog/medicines/{id}', [CatalogController::class, 'show']);
 
-Route::middleware('auth:sanctum')->group(function (): void {
+Route::middleware(['auth:sanctum', 'not_blocked'])->group(function (): void {
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/notifications', [NotificationController::class, 'index']);
@@ -119,13 +119,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::get('/admin/customers', [AdminCustomerController::class, 'index'])
         ->middleware('role:admin');
-    Route::post('/admin/customers', [AdminCustomerController::class, 'store'])
-        ->middleware('role:admin');
     Route::get('/admin/customers/{user}', [AdminCustomerController::class, 'show'])
         ->middleware('role:admin');
-    Route::put('/admin/customers/{user}', [AdminCustomerController::class, 'update'])
-        ->middleware('role:admin');
-    Route::delete('/admin/customers/{user}', [AdminCustomerController::class, 'destroy'])
+    Route::patch('/admin/customers/{user}/toggle-block', [AdminCustomerController::class, 'toggleBlock'])
         ->middleware('role:admin');
 
     Route::get('/admin/audit-logs', [AuditLogController::class, 'index'])

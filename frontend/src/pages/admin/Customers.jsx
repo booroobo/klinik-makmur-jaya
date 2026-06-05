@@ -1,16 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import api from '../../api/axios'
 import AdminHeader from '../../components/AdminHeader'
+import ConfirmModal from '../../components/ConfirmModal'
 import Sidebar from '../../components/Sidebar'
-
-const emptyForm = {
-  name: '',
-  email: '',
-  phone: '',
-  address: '',
-  password: '',
-  password_confirmation: '',
-}
 
 const formatDateTime = (value) => {
   if (!value) return '-'
@@ -32,13 +24,10 @@ export default function Customers() {
   const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0 })
   const [keyword, setKeyword] = useState('')
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [deletingId, setDeletingId] = useState(null)
+  const [blockingId, setBlockingId] = useState(null)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const [formOpen, setFormOpen] = useState(false)
-  const [editingCustomer, setEditingCustomer] = useState(null)
-  const [form, setForm] = useState(emptyForm)
+  const [confirmBlock, setConfirmBlock] = useState(null)
 
   const fetchCustomers = useCallback(async (page = 1, search = keyword) => {
     setLoading(true)
@@ -71,110 +60,28 @@ export default function Customers() {
     setKeyword(event.target.value)
   }
 
-  const openCreateForm = () => {
-    setEditingCustomer(null)
-    setForm(emptyForm)
-    setFormOpen(true)
-    setError('')
-    setMessage('')
+  const toggleBlockCustomer = (customer) => {
+    setConfirmBlock(customer)
   }
 
-  const openEditForm = (customer) => {
-    setEditingCustomer(customer)
-    setForm({
-      name: customer.name || '',
-      email: customer.email || '',
-      phone: customer.phone || '',
-      address: customer.address || '',
-      password: '',
-      password_confirmation: '',
-    })
-    setFormOpen(true)
-    setError('')
-    setMessage('')
-  }
-
-  const handleFormChange = (event) => {
-    const { name, value } = event.target
-    setForm((current) => ({ ...current, [name]: value }))
-  }
-
-  const validateForm = () => {
-    if (!form.name.trim() || !form.email.trim() || !form.phone.trim() || !form.address.trim()) {
-      return 'Nama, email, telepon, dan alamat wajib diisi.'
-    }
-
-    if (!/^[0-9+\-\s()]{10,50}$/.test(form.phone)) {
-      return 'Telepon minimal 10 digit dan hanya boleh berisi angka/simbol telepon.'
-    }
-
-    if (!editingCustomer && form.password.length < 8) {
-      return 'Password minimal 8 karakter.'
-    }
-
-    if (form.password && form.password.length < 8) {
-      return 'Password minimal 8 karakter.'
-    }
-
-    if (form.password !== form.password_confirmation) {
-      return 'Konfirmasi password tidak sama.'
-    }
-
-    return ''
-  }
-
-  const submitForm = async (event) => {
-    event.preventDefault()
-    const validationError = validateForm()
-
-    if (validationError) {
-      setError(validationError)
+  const confirmToggleBlock = async () => {
+    if (!confirmBlock) {
       return
     }
 
-    setSaving(true)
+    setBlockingId(confirmBlock.id)
     setError('')
     setMessage('')
 
     try {
-      const payload = { ...form }
-      if (editingCustomer && !payload.password) {
-        delete payload.password
-        delete payload.password_confirmation
-      }
-
-      if (editingCustomer) {
-        await api.put('/admin/customers/' + editingCustomer.id, payload)
-        setMessage('Pelanggan berhasil diperbarui.')
-      } else {
-        await api.post('/admin/customers', payload)
-        setMessage('Pelanggan berhasil dibuat.')
-      }
-
-      setFormOpen(false)
-      setEditingCustomer(null)
-      setForm(emptyForm)
+      const response = await api.patch(`/admin/customers/${confirmBlock.id}/toggle-block`)
+      setMessage(response.data.message)
+      setConfirmBlock(null)
       await fetchCustomers(pagination.current_page)
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Gagal menyimpan pelanggan.'))
+      setError(getApiErrorMessage(err, 'Gagal memproses blokir pelanggan.'))
     } finally {
-      setSaving(false)
-    }
-  }
-
-  const deleteCustomer = async (customer) => {
-    setDeletingId(customer.id)
-    setError('')
-    setMessage('')
-
-    try {
-      await api.delete('/admin/customers/' + customer.id)
-      setMessage('Pelanggan berhasil dihapus.')
-      await fetchCustomers(pagination.current_page)
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Gagal menghapus pelanggan.'))
-    } finally {
-      setDeletingId(null)
+      setBlockingId(null)
     }
   }
 
@@ -182,7 +89,7 @@ export default function Customers() {
     <div className="flex min-h-screen bg-surface">
       <Sidebar active="customers" />
       <main className="ml-sidebar-width flex min-w-0 flex-1 flex-col">
-        <AdminHeader title="Pelanggan" subtitle="Kelola data akun pelanggan Klinik Makmur Jaya." />
+        <AdminHeader title="Pelanggan" subtitle="Kelola status blokir akun pelanggan Klinik Makmur Jaya." />
 
         <div className="space-y-6 p-6 xl:p-8">
           <section className="rounded-xl border border-outline-variant bg-white p-5 shadow-sm">
@@ -191,38 +98,11 @@ export default function Customers() {
                 Cari Pelanggan
                 <input className="mt-1 w-full rounded-lg border border-outline-variant px-4 py-2.5 font-normal outline-none focus:border-primary" placeholder="Nama, email, telepon, alamat..." type="search" value={keyword} onChange={handleKeywordChange} />
               </label>
-              <button className="rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-white" type="button" onClick={openCreateForm}>
-                Tambah Pelanggan
-              </button>
             </div>
           </section>
 
           {message && <div className="rounded-lg bg-secondary-container px-4 py-3 text-sm font-semibold text-secondary">{message}</div>}
           {error && <div className="rounded-lg bg-error-container px-4 py-3 text-sm font-semibold text-on-error-container">{error}</div>}
-
-          {formOpen && (
-            <section className="rounded-xl border border-outline-variant bg-white p-5 shadow-sm">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="font-bold">{editingCustomer ? 'Edit Pelanggan' : 'Tambah Pelanggan'}</h2>
-                <button className="rounded-lg px-3 py-1.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container-low" type="button" onClick={() => setFormOpen(false)}>
-                  Tutup
-                </button>
-              </div>
-              <form className="grid gap-4 md:grid-cols-2" onSubmit={submitForm}>
-                <Input label="Nama" name="name" required value={form.name} onChange={handleFormChange} />
-                <Input label="Email" name="email" required type="email" value={form.email} onChange={handleFormChange} />
-                <Input label="Telepon" name="phone" required value={form.phone} onChange={handleFormChange} />
-                <label className="text-sm font-semibold md:col-span-2">Alamat<textarea className="mt-1 min-h-24 w-full rounded-lg border border-outline-variant px-4 py-2.5 font-normal outline-none focus:border-primary" name="address" required value={form.address} onChange={handleFormChange} /></label>
-                <Input label={editingCustomer ? 'Password Baru (opsional)' : 'Password'} name="password" required={!editingCustomer} type="password" value={form.password} onChange={handleFormChange} />
-                <Input label="Konfirmasi Password" name="password_confirmation" required={!editingCustomer || Boolean(form.password)} type="password" value={form.password_confirmation} onChange={handleFormChange} />
-                <div className="md:col-span-2">
-                  <button className="rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50" type="submit" disabled={saving}>
-                    {saving ? 'Menyimpan...' : 'Simpan Pelanggan'}
-                  </button>
-                </div>
-              </form>
-            </section>
-          )}
 
           <section className="overflow-hidden rounded-xl border border-outline-variant bg-white shadow-sm">
             <div className="border-b border-outline-variant bg-surface-container-low px-5 py-4">
@@ -237,6 +117,7 @@ export default function Customers() {
                     <th className="px-5 py-3">Email</th>
                     <th className="px-5 py-3">Telepon</th>
                     <th className="px-5 py-3">Alamat</th>
+                    <th className="px-5 py-3">Status</th>
                     <th className="px-5 py-3">Order</th>
                     <th className="px-5 py-3">Dibuat</th>
                     <th className="px-5 py-3 text-right">Aksi</th>
@@ -244,22 +125,41 @@ export default function Customers() {
                 </thead>
                 <tbody className="divide-y divide-outline-variant">
                   {loading ? (
-                    <tr><td className="px-5 py-8 text-center text-on-surface-variant" colSpan="7">Memuat pelanggan...</td></tr>
+                    <tr><td className="px-5 py-8 text-center text-on-surface-variant" colSpan="8">Memuat pelanggan...</td></tr>
                   ) : customers.length === 0 ? (
-                    <tr><td className="px-5 py-8 text-center text-on-surface-variant" colSpan="7">Belum ada pelanggan sesuai filter.</td></tr>
+                    <tr><td className="px-5 py-8 text-center text-on-surface-variant" colSpan="8">Belum ada pelanggan sesuai filter.</td></tr>
                   ) : customers.map((customer) => (
                     <tr key={customer.id} className="hover:bg-surface-container-low">
                       <td className="px-5 py-4 font-bold">{customer.name}</td>
                       <td className="px-5 py-4">{customer.email}</td>
                       <td className="px-5 py-4">{customer.phone || '-'}</td>
                       <td className="max-w-xs px-5 py-4 text-on-surface-variant"><span className="line-clamp-2">{customer.address || '-'}</span></td>
+                      <td className="px-5 py-4">
+                        {customer.is_blocked ? (
+                          <span className="inline-flex rounded-full bg-error-container px-2.5 py-1 text-xs font-semibold text-on-error-container">
+                            Diblokir
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                            Aktif
+                          </span>
+                        )}
+                      </td>
                       <td className="px-5 py-4">{customer.orders_count || 0}</td>
                       <td className="px-5 py-4 text-on-surface-variant">{formatDateTime(customer.created_at)}</td>
                       <td className="px-5 py-4">
                         <div className="flex justify-end gap-2">
-                          <button className="rounded-lg border border-primary px-3 py-1.5 text-xs font-bold text-primary" type="button" onClick={() => openEditForm(customer)}>Edit</button>
-                          <button className="rounded-lg border border-error px-3 py-1.5 text-xs font-bold text-error disabled:opacity-50" type="button" disabled={deletingId === customer.id} onClick={() => deleteCustomer(customer)}>
-                            {deletingId === customer.id ? 'Hapus...' : 'Delete'}
+                          <button 
+                            className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-all disabled:opacity-50 ${
+                              customer.is_blocked 
+                                ? 'border-primary text-primary hover:bg-primary/5' 
+                                : 'border-error text-error hover:bg-error-container'
+                            }`}
+                            type="button" 
+                            disabled={blockingId === customer.id} 
+                            onClick={() => toggleBlockCustomer(customer)}
+                          >
+                            {customer.is_blocked ? 'Buka Blokir' : 'Blokir'}
                           </button>
                         </div>
                       </td>
@@ -278,15 +178,18 @@ export default function Customers() {
           </section>
         </div>
       </main>
-    </div>
-  )
-}
 
-function Input({ label, name, type = 'text', value, onChange, required = false }) {
-  return (
-    <label className="text-sm font-semibold">
-      {label}
-      <input className="mt-1 w-full rounded-lg border border-outline-variant px-4 py-2.5 font-normal outline-none focus:border-primary" name={name} required={required} type={type} value={value} onChange={onChange} />
-    </label>
+      {confirmBlock && (
+        <ConfirmModal
+          title={confirmBlock.is_blocked ? 'Konfirmasi Buka Blokir' : 'Konfirmasi Blokir'}
+          description={`Apakah Anda yakin ingin ${confirmBlock.is_blocked ? 'membuka blokir' : 'memblokir'} akun pelanggan ${confirmBlock.name}?`}
+          confirmLabel={confirmBlock.is_blocked ? 'Buka Blokir' : 'Blokir'}
+          variant={confirmBlock.is_blocked ? 'primary' : 'error'}
+          loading={blockingId === confirmBlock.id}
+          onCancel={() => setConfirmBlock(null)}
+          onConfirm={confirmToggleBlock}
+        />
+      )}
+    </div>
   )
 }

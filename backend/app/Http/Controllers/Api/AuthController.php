@@ -52,6 +52,27 @@ class AuthController extends Controller
         $email = $request->string('email')->lower()->toString();
         $user = User::where('email', $email)->first();
 
+        if ($user && $user->is_blocked) {
+            $this->auditLogger->failed(
+                $request,
+                'login',
+                'auth',
+                'Blocked account',
+                "Percobaan login gagal karena akun {$email} diblokir.",
+                ['email' => $email],
+                $user,
+                $email,
+                Response::HTTP_FORBIDDEN,
+            );
+
+            return response()->json([
+                'message' => 'Akun Anda telah diblokir. Silakan hubungi admin.',
+                'errors' => [
+                    'email' => ['Akun Anda telah diblokir. Silakan hubungi admin.'],
+                ],
+            ], Response::HTTP_FORBIDDEN);
+        }
+
         if (! Auth::attempt($credentials)) {
             $failureReason = $user ? 'Invalid credentials' : 'Email not found';
 
