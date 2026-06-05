@@ -70,7 +70,7 @@ class ReportQueuePaymentSimulationTest extends TestCase
             ->assertOk();
     }
 
-    public function test_checkout_uses_simulated_payment_status(): void
+    public function test_checkout_ignores_client_payment_status_and_starts_unpaid(): void
     {
         [$user, $medicine] = $this->seedCheckoutMedicine();
         $cart = Cart::create(['user_id' => $user->id]);
@@ -90,16 +90,14 @@ class ReportQueuePaymentSimulationTest extends TestCase
         ]);
 
         $response->assertCreated()
-            ->assertJsonPath('data.payment_status', 'failed');
+            ->assertJsonPath('data.payment_status', Order::PAYMENT_STATUS_UNPAID);
 
         $order = Order::firstOrFail();
-        $this->assertSame('failed', $order->payment_status);
+        $this->assertSame(Order::PAYMENT_STATUS_UNPAID, $order->payment_status);
         $this->assertSame(Order::STATUS_PENDING_PAYMENT, $order->normalizedStatus());
-        $this->assertDatabaseHas('audit_logs', [
+        $this->assertDatabaseMissing('audit_logs', [
             'user_id' => $user->id,
             'action' => 'payment_simulation',
-            'module' => 'order',
-            'status' => 'success',
         ]);
     }
 

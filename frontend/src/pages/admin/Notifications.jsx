@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
 import AdminHeader from '../../components/AdminHeader'
 import Sidebar from '../../components/Sidebar'
+import {
+  isNotificationUnread,
+  markAllNotificationsReadLocally,
+  markNotificationReadLocally,
+  sortNotificationsByPriority,
+  unreadIndicatorClass,
+} from '../../utils/notifications'
 
 const severityStyles = {
   info: 'border-blue-300 text-blue-700 bg-blue-50',
@@ -23,6 +31,7 @@ const formatDateTime = (value) => {
 }
 
 export default function Notifications() {
+  const navigate = useNavigate()
   const [notifications, setNotifications] = useState([])
   const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0 })
   const [loading, setLoading] = useState(true)
@@ -34,7 +43,7 @@ export default function Notifications() {
 
     try {
       const response = await api.get('/notifications', { params: { page, per_page: 12 } })
-      setNotifications(response.data.data || [])
+      setNotifications(sortNotificationsByPriority(response.data.data || []))
       setPagination({
         current_page: response.data.current_page || 1,
         last_page: response.data.last_page || 1,
@@ -54,13 +63,14 @@ export default function Notifications() {
   }, [])
 
   const markRead = async (notification) => {
-    await api.patch('/notifications/' + notification.id + '/read')
-    fetchNotifications(pagination.current_page)
+    if (isNotificationUnread(notification)) await api.patch('/notifications/' + notification.id + '/read')
+    setNotifications((current) => markNotificationReadLocally(current, notification.id))
+    if (notification.target_url) navigate(notification.target_url)
   }
 
   const markAllRead = async () => {
     await api.patch('/notifications/read-all')
-    fetchNotifications(pagination.current_page)
+    setNotifications((current) => markAllNotificationsReadLocally(current))
   }
 
   return (
@@ -91,20 +101,21 @@ export default function Notifications() {
                 const style = severityStyles[notification.severity] || severityStyles.info
 
                 return (
-                  <article key={notification.id} className={'rounded-xl border-l-4 bg-white p-5 shadow-sm ' + style}>
+                  <article key={notification.id} className={'cursor-pointer rounded-xl border-l-4 bg-white p-5 shadow-sm ' + style} onClick={() => markRead(notification)}>
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase">{severityLabels[notification.severity] || notification.severity}</span>
                           <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase">{notification.type}</span>
-                          {!notification.read_at && <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold uppercase text-white">Unread</span>}
+                          {isNotificationUnread(notification) && <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold uppercase text-white">Unread</span>}
                         </div>
                         <h4 className="mt-3 font-bold text-on-surface">{notification.title}</h4>
                         <p className="mt-1 text-sm text-on-surface-variant">{notification.message}</p>
                         <p className="mt-3 text-xs text-on-surface-variant">{formatDateTime(notification.created_at)}</p>
                       </div>
-                      <button className="shrink-0 rounded-lg border border-outline-variant bg-white px-3 py-2 text-xs font-bold text-primary disabled:opacity-40" type="button" disabled={Boolean(notification.read_at)} onClick={() => markRead(notification)}>
-                        Mark Read
+                      <span className={`mt-1 h-3 w-3 shrink-0 rounded-full ring-4 ${unreadIndicatorClass(notification)}`} title={isNotificationUnread(notification) ? 'Belum dibaca' : 'Sudah dibaca'} />
+                      <button className="shrink-0 rounded-lg border border-outline-variant bg-white px-3 py-2 text-xs font-bold text-primary" type="button" onClick={(event) => { event.stopPropagation(); markRead(notification) }}>
+                        {notification.target_url ? 'Buka Pesanan' : 'Tandai Dibaca'}
                       </button>
                     </div>
                   </article>

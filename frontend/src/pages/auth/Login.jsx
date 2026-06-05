@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import Footer from '../../components/Footer'
 import { useAuth } from '../../context/AuthContext'
+import { consumeSessionExpiredMessage } from '../../utils/session'
 
 const roleRedirects = {
   pelanggan: '/catalog',
@@ -20,9 +21,15 @@ const demoAccounts = [
 export default function Login() {
   const { isAuthenticated, login, user } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [form, setForm] = useState({ email: '', password: '' })
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => consumeSessionExpiredMessage())
   const [submitting, setSubmitting] = useState(false)
+  const verificationMessage = searchParams.get('verification') === 'success'
+    ? 'Email berhasil diverifikasi. Silakan login.'
+    : searchParams.get('verification') === 'expired'
+      ? 'Link verifikasi tidak valid atau sudah kedaluwarsa. Silakan kirim ulang email verifikasi.'
+      : ''
 
   if (isAuthenticated) {
     const role = user?.role?.toLowerCase()
@@ -84,6 +91,7 @@ export default function Login() {
                 {error}
               </div>
             )}
+            {verificationMessage && !error && <div className="mb-4 rounded-lg border border-primary/20 bg-primary-container px-4 py-3 text-sm font-semibold text-on-primary-container">{verificationMessage}</div>}
 
             <form className="space-y-5" onSubmit={handleSubmit}>
               <div className="space-y-1">

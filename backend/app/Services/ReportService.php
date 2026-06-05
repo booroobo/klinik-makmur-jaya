@@ -39,7 +39,7 @@ class ReportService
                 'average_order_value' => $totalTransactions > 0 ? round($totalRevenue / $totalTransactions, 2) : 0,
                 'items_sold' => $totalItems,
             ],
-            'trend' => $this->salesTrend($orders, $filters['group_by'] ?? 'daily'),
+            'trend' => $this->salesTrend($orders, $filters['group_by'] ?? 'daily', $from, $to),
             'status_summary' => $this->statusSummary($filters, $from, $to),
             'payment_summary' => $this->paymentSummary($filters, $from, $to),
         ];
@@ -259,18 +259,59 @@ class ReportService
     /**
      * @return array<int, array{period: string, label: string, revenue: float, transactions: int}>
      */
-    private function salesTrend(Collection $orders, string $groupBy): array
+    private function salesTrend(Collection $orders, string $groupBy, Carbon $from, Carbon $to): array
     {
-        return $orders
-            ->groupBy(fn (Order $order): string => $this->groupKey($order->created_at, $groupBy))
-            ->map(fn (Collection $group, string $key): array => [
+        $groupedOrders = $orders->groupBy(fn (Order $order): string => $this->groupKey($order->created_at, $groupBy));
+
+        return $this->trendPeriods($from, $to, $groupBy)
+            ->map(function (Carbon $date) use ($groupedOrders, $groupBy): array {
+                $key = $this->groupKey($date, $groupBy);
+                $group = $groupedOrders->get($key, collect());
+
+                return [
                 'period' => $key,
-                'label' => $key,
+                'label' => $this->groupLabel($date, $groupBy),
                 'revenue' => (float) $group->sum('total'),
                 'transactions' => $group->count(),
-            ])
+                ];
+            })
             ->values()
             ->all();
+    }
+
+    private function trendPeriods(Carbon $from, Carbon $to, string $groupBy): Collection
+    {
+        $cursor = match ($groupBy) {
+            'weekly' => $from->copy()->startOfWeek(),
+            'monthly' => $from->copy()->startOfMonth(),
+            default => $from->copy()->startOfDay(),
+        };
+        $end = match ($groupBy) {
+            'weekly' => $to->copy()->startOfWeek(),
+            'monthly' => $to->copy()->startOfMonth(),
+            default => $to->copy()->startOfDay(),
+        };
+        $periods = collect();
+
+        while ($cursor->lte($end)) {
+            $periods->push($cursor->copy());
+            match ($groupBy) {
+                'weekly' => $cursor->addWeek(),
+                'monthly' => $cursor->addMonth(),
+                default => $cursor->addDay(),
+            };
+        }
+
+        return $periods;
+    }
+
+    private function groupLabel(Carbon $date, string $groupBy): string
+    {
+        return match ($groupBy) {
+            'weekly' => $date->format('d M Y'),
+            'monthly' => $date->format('M Y'),
+            default => $date->format('d M'),
+        };
     }
 
     /**

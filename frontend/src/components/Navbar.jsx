@@ -2,6 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import {
+  isNotificationUnread,
+  markAllNotificationsReadLocally,
+  markNotificationReadLocally,
+  sortNotificationsByPriority,
+  unreadIndicatorClass,
+} from '../utils/notifications'
 
 const avatarUrl =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuD6dXGlvpYW5LsuQ5BcsOfN7xDAHOi1oH7DRZTonhblJUhYIp96vs_Y9R_VfOEUNwfP-15s6Cb5E0C-w8lOChoOBVu3R8FLhaYeoms-jG3hNPT36ZlWVRGoDwYaIZfFZuGoLwAgqGRB81ZRq7_igSpFz4cWITgCBkGAVZAu4_X5xlYo1I2wGoajXiFMO3N7CkJB_HH2epfDiZNEaHh29wFgHnGivyzYFF9BpLZnwzKax4T5XiWYYkFB4Xs2sTTy_2neixxpfR4hON8'
@@ -87,7 +94,7 @@ export default function Navbar({ role = 'customer' }) {
 
       try {
         const response = await api.get('/notifications', { params: { per_page: 5 } })
-        setNotifications(response.data.data || [])
+        setNotifications(sortNotificationsByPriority(response.data.data || []))
       } catch {
         setNotifications([])
       }
@@ -99,7 +106,16 @@ export default function Navbar({ role = 'customer' }) {
   const markAllNotificationsRead = async () => {
     await api.patch('/notifications/read-all')
     setUnreadCount(0)
-    setNotifications((current) => current.map((notification) => ({ ...notification, read_at: notification.read_at || new Date().toISOString() })))
+    setNotifications((current) => markAllNotificationsReadLocally(current))
+  }
+
+  const openNotification = async (notification) => {
+    const wasUnread = isNotificationUnread(notification)
+    if (wasUnread) await api.patch('/notifications/' + notification.id + '/read')
+    setNotifications((current) => markNotificationReadLocally(current, notification.id))
+    setNotificationsOpen(false)
+    setUnreadCount((current) => Math.max(0, current - (wasUnread ? 1 : 0)))
+    if (notification.target_url) navigate(notification.target_url)
   }
 
   const handleLogout = async () => {
@@ -168,9 +184,11 @@ export default function Navbar({ role = 'customer' }) {
                       const style = notificationStyles[notification.severity] || notificationStyles.info
 
                       return (
-                        <article
+                        <button
                           key={notification.id}
-                          className="flex gap-3 rounded-lg border border-outline-variant bg-white p-3 hover:bg-surface-container-low"
+                          className="flex w-full gap-3 rounded-lg border border-outline-variant bg-white p-3 text-left hover:bg-surface-container-low"
+                          type="button"
+                          onClick={() => openNotification(notification)}
                         >
                           <span className={`material-symbols-outlined mt-0.5 ${style.iconClass}`}>
                             {style.icon}
@@ -184,7 +202,8 @@ export default function Navbar({ role = 'customer' }) {
                             </div>
                             <p className="text-xs text-on-surface-variant">{notification.message}</p>
                           </div>
-                        </article>
+                          <span className={`mt-1 h-3 w-3 shrink-0 rounded-full ring-4 ${unreadIndicatorClass(notification)}`} title={isNotificationUnread(notification) ? 'Belum dibaca' : 'Sudah dibaca'} />
+                        </button>
                       )
                     })}
                   </div>}

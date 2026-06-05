@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import api from '../../api/axios'
 import AdminHeader from '../../components/AdminHeader'
 import Sidebar from '../../components/Sidebar'
@@ -31,6 +32,7 @@ const formatCurrency = (value) => new Intl.NumberFormat('id-ID', { style: 'curre
 const formatDateTime = (value) => value ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '-'
 
 export default function Orders() {
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
   const [orders, setOrders] = useState([])
@@ -94,6 +96,13 @@ export default function Orders() {
       setDetailLoading(false)
     }
   }
+
+  useEffect(() => {
+    const orderId = searchParams.get('order')
+    if (!orderId) return undefined
+    const timeoutId = window.setTimeout(() => openDetail(orderId), 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [searchParams])
 
   const refreshAfterAction = async (order) => {
     setSelectedOrder(order)

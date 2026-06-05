@@ -44,7 +44,6 @@ export default function Checkout() {
     customer_address: '',
     fulfillment_method: 'pickup',
     payment_method: 'bank_transfer',
-    payment_status: 'paid',
     notes: '',
   })
 
@@ -159,31 +158,14 @@ export default function Checkout() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <SelectField label="Pengambilan" name="fulfillment_method" value={form.fulfillment_method} onChange={handleChange} options={[
                     { value: 'pickup', label: 'Ambil di Klinik' },
-                    { value: 'delivery', label: 'Kirim ke Alamat' },
+                    { value: 'delivery', label: 'Pengiriman' },
                   ]} />
                   <SelectField label="Pembayaran" name="payment_method" value={form.payment_method} onChange={handleChange} options={[
                     { value: 'bank_transfer', label: 'Transfer Bank' },
                     { value: 'cashier', label: 'Bayar di Kasir' },
-                    { value: 'e_wallet', label: 'E-Wallet Dummy' },
+                    { value: 'e_wallet', label: 'E-Wallet' },
                   ]} />
                 </div>
-                {form.payment_method === 'e_wallet' && (
-                  <div className="mt-4 rounded-lg border border-outline-variant bg-surface-container-low p-4">
-                    <SelectField
-                      label="Simulasi Status Pembayaran"
-                      name="payment_status"
-                      value={form.payment_status}
-                      onChange={handleChange}
-                      options={[
-                        { value: 'paid', label: 'Paid' },
-                        { value: 'unpaid', label: 'Unpaid' },
-                        { value: 'failed', label: 'Failed' },
-                        { value: 'refunded', label: 'Refunded' },
-                      ]}
-                    />
-                    <p className="mt-2 text-xs text-on-surface-variant">Status ini hanya simulasi untuk demo payment gateway/e-wallet.</p>
-                  </div>
-                )}
                 <TextArea label="Catatan" name="notes" value={form.notes} onChange={handleChange} placeholder="Catatan tambahan untuk pesanan." />
               </section>
 

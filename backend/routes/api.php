@@ -20,14 +20,16 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SupplierController;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/register', [AuthController::class, 'register']);
+Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
 Route::post('/login', [AuthController::class, 'login']);
+Route::get('/verify-email/{token}', [AuthController::class, 'verifyEmail']);
+Route::post('/resend-verification-email', [AuthController::class, 'resendVerification'])->middleware('throttle:3,1');
 Route::get('/categories', [CategoryController::class, 'index']);
 Route::get('/catalog/medicines', [CatalogController::class, 'index']);
 Route::get('/catalog/medicines/autocomplete', [CatalogController::class, 'autocomplete']);
 Route::get('/catalog/medicines/{id}', [CatalogController::class, 'show']);
 
-Route::middleware(['auth:sanctum', 'not_blocked'])->group(function (): void {
+Route::middleware(['session_timeout', 'auth:sanctum', 'not_blocked'])->group(function (): void {
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/notifications', [NotificationController::class, 'index']);
@@ -49,6 +51,8 @@ Route::middleware(['auth:sanctum', 'not_blocked'])->group(function (): void {
     Route::get('/suppliers/{supplier}', [SupplierController::class, 'show'])
         ->middleware('role:admin,apoteker');
     Route::post('/suppliers', [SupplierController::class, 'store'])
+        ->middleware('role:admin');
+    Route::post('/suppliers/{id}/restore', [SupplierController::class, 'restore'])
         ->middleware('role:admin');
     Route::put('/suppliers/{supplier}', [SupplierController::class, 'update'])
         ->middleware('role:admin');

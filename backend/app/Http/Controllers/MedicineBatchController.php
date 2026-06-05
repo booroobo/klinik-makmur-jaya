@@ -98,7 +98,7 @@ class MedicineBatchController extends Controller
         return $request->validate([
             'medicine_id' => [$requireMedicine ? 'required' : 'sometimes', 'integer', Rule::exists('medicines', 'id')],
             'batch_number' => ['required', 'string', 'max:255'],
-            'expired_date' => ['required', 'date'],
+            'expired_date' => ['required', 'date', 'after_or_equal:today'],
             'quantity' => ['required', 'integer', 'min:0'],
             'purchase_price' => ['nullable', 'numeric', 'min:0'],
         ]);

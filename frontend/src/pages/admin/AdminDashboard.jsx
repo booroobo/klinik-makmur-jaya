@@ -14,6 +14,7 @@ import { Bar, Doughnut, Line } from 'react-chartjs-2'
 import api from '../../api/axios'
 import AdminHeader from '../../components/AdminHeader'
 import Sidebar from '../../components/Sidebar'
+import { buildSalesTrendChartData, buildSalesTrendChartOptions } from '../../utils/salesTrendChart'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend)
 
@@ -61,21 +62,7 @@ const formatDateTime = (value) => {
   return new Date(value).toLocaleString('id-ID')
 }
 
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: { display: false },
-    tooltip: {
-      callbacks: {
-        label: (context) => formatCurrency(context.parsed.y ?? context.parsed),
-      },
-    },
-  },
-  scales: {
-    y: { beginAtZero: true, ticks: { callback: (value) => formatCurrency(value) } },
-  },
-}
+const chartOptions = buildSalesTrendChartOptions(formatCurrency)
 
 const doughnutOptions = {
   responsive: true,
@@ -111,19 +98,7 @@ export default function AdminDashboard() {
     fetchDashboard()
   }, [expiringDays])
 
-  const dailyChart = useMemo(() => ({
-    labels: dashboard.sales_daily.map((row) => row.label),
-    datasets: [
-      {
-        label: 'Omzet',
-        data: dashboard.sales_daily.map((row) => row.revenue),
-        borderColor: '#0f766e',
-        backgroundColor: 'rgba(15, 118, 110, 0.16)',
-        fill: true,
-        tension: 0.35,
-      },
-    ],
-  }), [dashboard.sales_daily])
+  const dailyChart = useMemo(() => buildSalesTrendChartData(dashboard.sales_daily), [dashboard.sales_daily])
 
   const monthlyChart = useMemo(() => ({
     labels: dashboard.sales_monthly.map((row) => row.label),

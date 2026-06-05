@@ -46,7 +46,7 @@ class DatabaseSeeder extends Seeder
         foreach ($users as $user) {
             User::updateOrCreate(
                 ['email' => $user['email']],
-                $user + ['password' => Hash::make('password')],
+                $user + ['password' => Hash::make('password'), 'email_verified_at' => now()],
             );
         }
 

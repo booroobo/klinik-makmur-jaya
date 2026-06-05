@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import {
+  isNotificationUnread,
+  markAllNotificationsReadLocally,
+  markNotificationReadLocally,
+  sortNotificationsByPriority,
+  unreadIndicatorClass,
+} from '../utils/notifications'
 
 const fallbackNameByRole = {
   admin: 'Admin Demo',
@@ -17,6 +24,7 @@ const severityStyles = {
 }
 
 export default function AdminHeader({ title, subtitle }) {
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [open, setOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
@@ -40,7 +48,7 @@ export default function AdminHeader({ title, subtitle }) {
 
     try {
       const response = await api.get('/notifications', { params: { per_page: 5 } })
-      setNotifications(response.data.data || [])
+      setNotifications(sortNotificationsByPriority(response.data.data || []))
     } catch {
       setNotifications([])
     }
@@ -66,7 +74,16 @@ export default function AdminHeader({ title, subtitle }) {
   const handleMarkAllRead = async () => {
     await api.patch('/notifications/read-all')
     setUnreadCount(0)
-    fetchNotifications()
+    setNotifications((current) => markAllNotificationsReadLocally(current))
+  }
+
+  const openNotification = async (notification) => {
+    const wasUnread = isNotificationUnread(notification)
+    if (wasUnread) await api.patch('/notifications/' + notification.id + '/read')
+    setNotifications((current) => markNotificationReadLocally(current, notification.id))
+    setUnreadCount((current) => Math.max(0, current - (wasUnread ? 1 : 0)))
+    setOpen(false)
+    if (notification.target_url) navigate(notification.target_url)
   }
 
   return (
@@ -105,7 +122,7 @@ export default function AdminHeader({ title, subtitle }) {
                   <p className="py-8 text-center text-sm text-on-surface-variant">Belum ada notifikasi.</p>
                 ) : (
                   <div className="space-y-2">
-                    {notifications.map((notification) => <NotificationItem key={notification.id} notification={notification} />)}
+                    {notifications.map((notification) => <NotificationItem key={notification.id} notification={notification} onOpen={openNotification} />)}
                   </div>
                 )}
               </div>
@@ -127,11 +144,11 @@ export default function AdminHeader({ title, subtitle }) {
   )
 }
 
-function NotificationItem({ notification }) {
+function NotificationItem({ notification, onOpen }) {
   const style = severityStyles[notification.severity] || severityStyles.info
 
   return (
-    <article className={'flex gap-3 rounded-lg border p-3 ' + (notification.read_at ? 'border-outline-variant bg-white' : 'border-primary/20 bg-primary-container/10')}>
+    <button className={'flex w-full gap-3 rounded-lg border p-3 text-left ' + (isNotificationUnread(notification) ? 'border-primary/20 bg-primary-container/10' : 'border-outline-variant bg-white')} type="button" onClick={() => onOpen(notification)}>
       <span className={'material-symbols-outlined mt-0.5 ' + style.iconClass}>{style.icon}</span>
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-start justify-between gap-3">
@@ -140,6 +157,7 @@ function NotificationItem({ notification }) {
         </div>
         <p className="text-xs text-on-surface-variant">{notification.message}</p>
       </div>
-    </article>
+      <span className={`mt-1 h-3 w-3 shrink-0 rounded-full ring-4 ${unreadIndicatorClass(notification)}`} title={isNotificationUnread(notification) ? 'Belum dibaca' : 'Sudah dibaca'} />
+    </button>
   )
 }

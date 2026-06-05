@@ -12,6 +12,7 @@ import { Line } from 'react-chartjs-2'
 import api from '../../api/axios'
 import AdminHeader from '../../components/AdminHeader'
 import Sidebar from '../../components/Sidebar'
+import { buildSalesTrendChartData, buildSalesTrendChartOptions } from '../../utils/salesTrendChart'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend)
 
@@ -119,30 +120,8 @@ export default function Reports() {
     }
   }, [fetchReportJobs])
 
-  const chartData = useMemo(() => ({
-    labels: sales?.trend?.map((row) => row.label) || [],
-    datasets: [
-      {
-        label: 'Omzet',
-        data: sales?.trend?.map((row) => row.revenue) || [],
-        borderColor: '#0f766e',
-        backgroundColor: 'rgba(15, 118, 110, 0.14)',
-        tension: 0.35,
-      },
-    ],
-  }), [sales])
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: { callbacks: { label: (context) => formatCurrency(context.parsed.y) } },
-    },
-    scales: {
-      y: { beginAtZero: true, ticks: { callback: (value) => formatCurrency(value) } },
-    },
-  }
+  const chartData = useMemo(() => buildSalesTrendChartData(sales?.trend || []), [sales])
+  const chartOptions = useMemo(() => buildSalesTrendChartOptions(formatCurrency), [])
 
   const handleFilterChange = (event) => {
     const { name, value } = event.target
@@ -165,7 +144,7 @@ export default function Reports() {
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = 'laporan-penjualan.' + extension
+      link.download = getDownloadFileName(response.headers['content-disposition']) || ('laporan-penjualan.' + extension)
       document.body.appendChild(link)
       link.click()
       link.remove()
@@ -331,7 +310,7 @@ export default function Reports() {
               </div>
 
               <section className="rounded-xl border border-outline-variant bg-white p-6 shadow-sm">
-                <h3 className="mb-5 font-bold">Sales Trend</h3>
+                <div className="mb-5 flex flex-col gap-1"><h3 className="font-bold">Grafik Penjualan {filters.group_by === 'monthly' ? 'Bulanan' : filters.group_by === 'weekly' ? 'Mingguan' : 'Harian'}</h3><p className="text-sm text-on-surface-variant">Omzet dari order berbayar dan tidak dibatalkan/ditolak.</p></div>
                 <div className="h-72">
                   {(sales?.trend || []).length > 0 ? <Line data={chartData} options={chartOptions} /> : <EmptyState text="Belum ada data penjualan pada filter ini." />}
                 </div>
@@ -371,6 +350,11 @@ export default function Reports() {
       </main>
     </div>
   )
+}
+
+function getDownloadFileName(contentDisposition) {
+  const match = contentDisposition?.match(/filename="?([^";]+)"?/i)
+  return match?.[1] || ''
 }
 
 function StatCard({ label, value }) {

@@ -7,6 +7,7 @@ use App\Models\Medicine;
 use App\Models\MedicineBatch;
 use App\Models\Order;
 use App\Models\User;
+use App\Services\ReportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Laravel\Sanctum\Sanctum;
@@ -169,6 +170,59 @@ class AdminReportTest extends TestCase
 
         $response->assertOk();
         $this->assertStringContainsString('application/pdf', $response->headers->get('content-type'));
+        $this->assertStringStartsWith('%PDF', $response->getContent());
+    }
+
+    public function test_non_admin_cannot_export_pdf(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => User::ROLE_KASIR]));
+
+        $this->get('/api/admin/reports/sales/export/pdf')->assertForbidden();
+    }
+
+    public function test_sales_trend_uses_dashboard_style_labels_and_zero_filled_dates(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-05 10:00:00'));
+        $admin = User::factory()->create(['role' => User::ROLE_ADMIN]);
+        $customer = User::factory()->create(['role' => User::ROLE_PELANGGAN]);
+        $order = $this->createOrder($customer, [
+            'status' => Order::STATUS_PAID,
+            'payment_status' => Order::PAYMENT_STATUS_PAID,
+            'total' => 75000,
+        ]);
+        $order->forceFill([
+            'created_at' => Carbon::parse('2026-06-04 10:00:00'),
+            'updated_at' => Carbon::parse('2026-06-04 10:00:00'),
+        ])->save();
+
+        Sanctum::actingAs($admin);
+
+        $this->getJson('/api/admin/reports/sales?date_from=2026-06-03&date_to=2026-06-05&group_by=daily')
+            ->assertOk()
+            ->assertJsonPath('data.trend.0.label', '03 Jun')
+            ->assertJsonPath('data.trend.0.revenue', 0)
+            ->assertJsonPath('data.trend.1.label', '04 Jun')
+            ->assertJsonPath('data.trend.1.revenue', 75000)
+            ->assertJsonPath('data.trend.2.label', '05 Jun')
+            ->assertJsonPath('data.trend.2.revenue', 0);
+    }
+
+    public function test_pdf_template_contains_brand_summary_chart_and_period(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-05 10:00:00'));
+        $reports = app(ReportService::class);
+        $filters = ['date_from' => '2026-06-01', 'date_to' => '2026-06-05', 'group_by' => 'daily'];
+        $payload = $reports->exportPayload($filters);
+        [$from, $to] = $reports->period($filters);
+
+        $html = view('reports.sales-pdf', compact('payload', 'from', 'to') + ['generatedAt' => now()])->render();
+
+        $this->assertStringContainsString('Klinik Makmur Jaya', $html);
+        $this->assertStringContainsString('Laporan Penjualan', $html);
+        $this->assertStringContainsString('Sales Trend', $html);
+        $this->assertStringContainsString('2026-06-01 s/d 2026-06-05', $html);
+        $this->assertStringContainsString('Total Transaksi', $html);
+        $this->assertStringContainsString('chart-bar', $html);
     }
 
     public function test_export_excel_returns_excel_response(): void

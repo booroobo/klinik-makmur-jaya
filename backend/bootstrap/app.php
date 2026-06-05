@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\RoleMiddleware;
 use App\Http\Middleware\EnsureUserNotBlocked;
+use App\Http\Middleware\EnsureSanctumTokenNotExpired;
 use App\Services\AuditLogger;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
@@ -22,11 +23,10 @@ return Application::configure(basePath: dirname(__DIR__))
         __DIR__.'/../app/Console/Commands',
     ])
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->statefulApi();
-
         $middleware->alias([
             'role' => RoleMiddleware::class,
             'not_blocked' => EnsureUserNotBlocked::class,
+            'session_timeout' => EnsureSanctumTokenNotExpired::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

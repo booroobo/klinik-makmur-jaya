@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { handleSessionExpiredResponse } from '../utils/session'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api',
@@ -16,5 +17,15 @@ api.interceptors.request.use((config) => {
 
   return config
 })
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (handleSessionExpiredResponse(error.response)) {
+      delete api.defaults.headers.common.Authorization
+    }
+    return Promise.reject(error)
+  },
+)
 
 export default api

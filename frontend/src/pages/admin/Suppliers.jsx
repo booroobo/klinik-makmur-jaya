@@ -35,6 +35,7 @@ export default function Suppliers() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [deletedSupplier, setDeletedSupplier] = useState(null)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [formOpen, setFormOpen] = useState(false)
@@ -135,18 +136,35 @@ export default function Suppliers() {
   }
 
   const deleteSupplier = async (supplier) => {
+    if (!window.confirm(`Hapus supplier ${supplier.name}?`)) return
     setDeletingId(supplier.id)
     setError('')
     setMessage('')
 
     try {
       await api.delete('/suppliers/' + supplier.id)
+      setDeletedSupplier(supplier)
+      setSuppliers((current) => current.filter((item) => item.id !== supplier.id))
       setMessage('Supplier berhasil dihapus.')
-      await fetchSuppliers()
     } catch (err) {
       setError(getApiErrorMessage(err, 'Gagal menghapus supplier.'))
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  const undoDelete = async () => {
+    if (!deletedSupplier) return
+    const supplier = deletedSupplier
+    setDeletedSupplier(null)
+    setError('')
+
+    try {
+      const response = await api.post('/suppliers/' + supplier.id + '/restore')
+      setSuppliers((current) => [...current, response.data.data].sort((a, b) => a.name.localeCompare(b.name)))
+      setMessage('Penghapusan supplier dibatalkan.')
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Gagal mengembalikan supplier.'))
     }
   }
 
@@ -181,7 +199,7 @@ export default function Suppliers() {
             </div>
           </section>
 
-          {message && <div className="rounded-lg bg-secondary-container px-4 py-3 text-sm font-semibold text-secondary">{message}</div>}
+          {message && <div className="flex items-center justify-between gap-4 rounded-lg bg-secondary-container px-4 py-3 text-sm font-semibold text-secondary"><span>{message}</span>{deletedSupplier && <button className="rounded-lg border border-secondary px-3 py-1.5 font-bold" type="button" onClick={undoDelete}>Undo</button>}</div>}
           {error && <div className="rounded-lg bg-error-container px-4 py-3 text-sm font-semibold text-on-error-container">{error}</div>}
 
           {formOpen && isAdmin && (

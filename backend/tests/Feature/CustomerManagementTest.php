@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -13,6 +14,7 @@ class CustomerManagementTest extends TestCase
 
     public function test_register_customer_saves_complete_profile_fields(): void
     {
+        Mail::fake();
         $this->postJson('/api/register', [
             'name' => 'Pelanggan Lengkap',
             'email' => 'lengkap@example.com',
@@ -35,6 +37,7 @@ class CustomerManagementTest extends TestCase
 
     public function test_register_validates_unique_email_password_phone_and_address(): void
     {
+        Mail::fake();
         User::factory()->create(['email' => 'duplikat@example.com']);
 
         $this->postJson('/api/register', [

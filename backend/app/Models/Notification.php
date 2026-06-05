@@ -38,6 +38,10 @@ class Notification extends Model
         'read_at' => 'datetime',
     ];
 
+    protected $appends = [
+        'is_read',
+    ];
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -46,5 +50,10 @@ class Notification extends Model
     public function isVisibleTo(User $user): bool
     {
         return $this->user_id === $user->id || $this->role_target === $user->role;
+    }
+
+    public function getIsReadAttribute(): bool
+    {
+        return $this->read_at !== null;
     }
 }

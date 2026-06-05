@@ -54,6 +54,10 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
+
+    'email_verification_expiration' => (int) env('EMAIL_VERIFICATION_EXPIRATION', 1440),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

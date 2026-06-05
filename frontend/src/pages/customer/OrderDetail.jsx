@@ -12,14 +12,14 @@ const formatCurrency = (value) =>
   }).format(Number(value || 0))
 
 const statusLabels = {
-  waiting_prescription: 'Menunggu Verifikasi Resep',
-  waiting_prescription_review: 'Menunggu Verifikasi Resep',
+  waiting_prescription: 'Menunggu Review Resep',
+  waiting_prescription_review: 'Menunggu Review Resep',
   pending_payment: 'Menunggu Pembayaran',
   paid: 'Sudah Dibayar',
-  confirmed: 'Terkonfirmasi',
+  confirmed: 'Dikonfirmasi',
   processing: 'Diproses',
   ready_for_pickup: 'Siap Diambil',
-  out_for_delivery: 'Dikirim',
+  out_for_delivery: 'Dalam Pengiriman',
   completed: 'Selesai',
   cancelled: 'Dibatalkan',
   rejected: 'Ditolak',
@@ -33,13 +33,13 @@ const prescriptionLabels = {
 
 const fulfillmentLabels = {
   pickup: 'Ambil di Klinik',
-  delivery: 'Kirim ke Alamat',
+  delivery: 'Pengiriman',
 }
 
 const paymentLabels = {
   bank_transfer: 'Transfer Bank',
   cashier: 'Bayar di Kasir',
-  e_wallet: 'E-Wallet Dummy',
+  e_wallet: 'E-Wallet',
 }
 
 export default function OrderDetail() {

@@ -2,7 +2,8 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -15,10 +16,10 @@ use Laravel\Sanctum\HasApiTokens;
 
 #[Fillable(['name', 'email', 'phone', 'address', 'password', 'role', 'is_blocked'])]
 #[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmailContract
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
+    use HasApiTokens, HasFactory, MustVerifyEmail, Notifiable, SoftDeletes;
 
     public const ROLE_ADMIN = 'admin';
     public const ROLE_APOTEKER = 'apoteker';
@@ -55,6 +56,11 @@ class User extends Authenticatable
     public function auditLogs(): HasMany
     {
         return $this->hasMany(AuditLog::class);
+    }
+
+    public function emailVerificationTokens(): HasMany
+    {
+        return $this->hasMany(EmailVerificationToken::class);
     }
 
     /**

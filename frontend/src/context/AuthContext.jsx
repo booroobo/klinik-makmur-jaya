@@ -7,33 +7,6 @@ const AuthContext = createContext(null)
 const TOKEN_KEY = 'kmj_token'
 const USER_KEY = 'kmj_user'
 
-const demoAccounts = {
-  'admin@example.com': {
-    id: 'demo-admin',
-    name: 'Admin Klinik',
-    email: 'admin@example.com',
-    role: 'admin',
-  },
-  'apoteker@example.com': {
-    id: 'demo-apoteker',
-    name: 'Apoteker Klinik',
-    email: 'apoteker@example.com',
-    role: 'apoteker',
-  },
-  'kasir@example.com': {
-    id: 'demo-kasir',
-    name: 'Kasir Klinik',
-    email: 'kasir@example.com',
-    role: 'kasir',
-  },
-  'pelanggan@example.com': {
-    id: 'demo-pelanggan',
-    name: 'Pelanggan Klinik',
-    email: 'pelanggan@example.com',
-    role: 'pelanggan',
-  },
-}
-
 const readStoredUser = () => {
   try {
     return JSON.parse(localStorage.getItem(USER_KEY))
@@ -63,11 +36,6 @@ export function AuthProvider({ children }) {
         return
       }
 
-      if (token.startsWith('demo-token-')) {
-        setLoading(false)
-        return
-      }
-
       try {
         const response = await api.get('/me')
         const currentUser = response.data.data.user
@@ -92,27 +60,12 @@ export function AuthProvider({ children }) {
   }, [])
 
   const login = useCallback(async (credentials) => {
-    try {
-      const response = await api.post('/login', {
-        ...credentials,
-        device_name: 'web',
-      })
-      persistSession(response.data.data)
-      return response.data.data
-    } catch (error) {
-      const demoUser = demoAccounts[credentials.email?.toLowerCase()]
-
-      if (demoUser && credentials.password === 'password') {
-        const demoSession = {
-          user: demoUser,
-          token: `demo-token-${demoUser.role}`,
-        }
-        persistSession(demoSession)
-        return demoSession
-      }
-
-      throw error
-    }
+    const response = await api.post('/login', {
+      ...credentials,
+      device_name: 'web',
+    })
+    persistSession(response.data.data)
+    return response.data.data
   }, [persistSession])
 
   const register = useCallback(async (payload) => {
@@ -120,13 +73,12 @@ export function AuthProvider({ children }) {
       ...payload,
       device_name: 'web',
     })
-    persistSession(response.data.data)
-    return response.data.data
-  }, [persistSession])
+    return response.data
+  }, [])
 
   const logout = useCallback(async () => {
     try {
-      if (token && !token.startsWith('demo-token-')) {
+      if (token) {
         await api.post('/logout')
       }
     } finally {

@@ -29,7 +29,6 @@ class CheckoutController extends Controller
         $data = $request->validate([
             'fulfillment_method' => ['required', Rule::in(['pickup', 'delivery'])],
             'payment_method' => ['required', Rule::in(['bank_transfer', 'cashier', 'e_wallet'])],
-            'payment_status' => ['nullable', Rule::in(Order::PAYMENT_STATUSES)],
             'customer_name' => ['required', 'string', 'max:255'],
             'customer_phone' => ['nullable', 'string', 'max:50'],
             'customer_address' => ['nullable', 'string'],
@@ -89,13 +88,7 @@ class CheckoutController extends Controller
         try {
             $order = DB::transaction(function () use ($cart, $data, $hasPrescriptionItems, $request): Order {
                 $allocations = [];
-                $paymentStatus = $data['payment_status'] ?? null;
-
-                if ($data['payment_method'] === 'e_wallet') {
-                    $paymentStatus = $paymentStatus ?: Order::PAYMENT_STATUS_PAID;
-                } else {
-                    $paymentStatus = $hasPrescriptionItems ? Order::PAYMENT_STATUS_UNPAID : Order::PAYMENT_STATUS_UNPAID;
-                }
+                $paymentStatus = Order::PAYMENT_STATUS_UNPAID;
 
                 foreach ($cart->items as $item) {
                     $allocations[$item->id] = $this->inventoryService->prepareFifoAllocation(
@@ -109,7 +102,7 @@ class CheckoutController extends Controller
                 $deliveryFee = $data['fulfillment_method'] === 'delivery' ? 10000 : 0;
                 $status = $hasPrescriptionItems
                     ? Order::STATUS_WAITING_PRESCRIPTION_REVIEW
-                    : ($paymentStatus === Order::PAYMENT_STATUS_PAID ? Order::STATUS_PAID : Order::STATUS_PENDING_PAYMENT);
+                    : Order::STATUS_PENDING_PAYMENT;
 
                 $order = Order::create([
                     'user_id' => $request->user()->id,
@@ -176,19 +169,10 @@ class CheckoutController extends Controller
             'payment_status' => $order->payment_status,
             'fulfillment_method' => $order->fulfillment_method,
             'payment_method' => $order->payment_method,
-            'payment_simulated' => $order->payment_method === 'e_wallet',
             'total' => $order->total,
             'item_count' => $order->items->count(),
             'has_prescription' => $order->prescription !== null,
         ]);
-        if ($order->payment_method === 'e_wallet') {
-            $this->auditLogger->success($request, 'payment_simulation', 'order', 'Simulasi payment e-wallet selesai.', [
-                'order_id' => $order->id,
-                'order_number' => $order->order_number,
-                'payment_status' => $order->payment_status,
-                'payment_method' => $order->payment_method,
-            ]);
-        }
         $this->notificationService->notifyNewOrder($order);
 
         if ($order->prescription) {

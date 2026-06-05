@@ -69,6 +69,23 @@ class SupplierController extends Controller
 
         return response()->json([
             'message' => 'Supplier berhasil dihapus.',
+            'data' => ['id' => $supplier->id],
+        ]);
+    }
+
+    public function restore(Request $request, int $id): JsonResponse
+    {
+        $supplier = Supplier::withTrashed()->findOrFail($id);
+        $supplier->restore();
+
+        $this->auditLogger->log($request, 'restore', 'supplier', "Supplier {$supplier->name} dikembalikan.", [
+            'supplier_id' => $supplier->id,
+            'name' => $supplier->name,
+        ]);
+
+        return response()->json([
+            'message' => 'Supplier berhasil dikembalikan.',
+            'data' => $supplier->fresh(),
         ]);
     }
 

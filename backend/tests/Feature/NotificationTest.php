@@ -31,7 +31,8 @@ class NotificationTest extends TestCase
 
         $this->getJson('/api/notifications')
             ->assertOk()
-            ->assertJsonPath('data.0.title', 'Status berubah');
+            ->assertJsonPath('data.0.title', 'Status berubah')
+            ->assertJsonPath('data.0.is_read', false);
     }
 
     public function test_admin_can_view_role_target_notifications(): void
@@ -104,6 +105,70 @@ class NotificationTest extends TestCase
             ->assertJsonPath('data.count', 2);
     }
 
+    public function test_mark_read_sets_is_read_and_writes_audit_log(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_PELANGGAN]);
+        $notification = Notification::create([
+            'user_id' => $user->id,
+            'type' => 'order_status_changed',
+            'title' => 'Order update',
+            'message' => 'Order berubah.',
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $this->patchJson("/api/notifications/{$notification->id}/read")
+            ->assertOk()
+            ->assertJsonPath('data.is_read', true);
+
+        $this->assertNotNull($notification->fresh()->read_at);
+        $this->assertDatabaseHas('audit_logs', [
+            'user_id' => $user->id,
+            'action' => 'mark_read',
+            'module' => 'notification',
+            'status' => 'success',
+        ]);
+    }
+
+    public function test_mark_all_read_sets_visible_notifications_read(): void
+    {
+        $admin = User::factory()->create(['role' => User::ROLE_ADMIN]);
+        $other = User::factory()->create(['role' => User::ROLE_PELANGGAN]);
+        Notification::create(['user_id' => $admin->id, 'type' => 'personal', 'title' => 'A', 'message' => 'A']);
+        Notification::create(['role_target' => User::ROLE_ADMIN, 'type' => 'role', 'title' => 'B', 'message' => 'B']);
+        $otherNotification = Notification::create(['user_id' => $other->id, 'type' => 'other', 'title' => 'C', 'message' => 'C']);
+
+        Sanctum::actingAs($admin);
+
+        $this->patchJson('/api/notifications/read-all')
+            ->assertOk()
+            ->assertJsonPath('data.count', 2);
+
+        $this->assertSame(0, Notification::query()->where(function ($query) use ($admin): void {
+            $query->where('user_id', $admin->id)->orWhere('role_target', $admin->role);
+        })->whereNull('read_at')->count());
+        $this->assertNull($otherNotification->fresh()->read_at);
+    }
+
+    public function test_notifications_are_sorted_unread_newest_first_then_read(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_PELANGGAN]);
+        Notification::create(['user_id' => $user->id, 'type' => 'read_newer', 'title' => 'Read newer', 'message' => 'Read newer', 'read_at' => now()])
+            ->forceFill(['created_at' => now()->addMinutes(3)])->save();
+        Notification::create(['user_id' => $user->id, 'type' => 'unread_older', 'title' => 'Unread older', 'message' => 'Unread older'])
+            ->forceFill(['created_at' => now()->addMinute()])->save();
+        Notification::create(['user_id' => $user->id, 'type' => 'unread_newer', 'title' => 'Unread newer', 'message' => 'Unread newer'])
+            ->forceFill(['created_at' => now()->addMinutes(2)])->save();
+
+        Sanctum::actingAs($user);
+
+        $this->getJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonPath('data.0.title', 'Unread newer')
+            ->assertJsonPath('data.1.title', 'Unread older')
+            ->assertJsonPath('data.2.title', 'Read newer');
+    }
+
     public function test_checkout_creates_new_order_notifications_for_admin_and_kasir(): void
     {
         $customer = User::factory()->create(['role' => User::ROLE_PELANGGAN]);
@@ -152,6 +217,11 @@ class NotificationTest extends TestCase
             'user_id' => $customer->id,
             'type' => 'order_status_changed',
         ]);
+
+        Sanctum::actingAs($customer);
+        $this->getJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonPath('data.0.target_url', "/my-orders/{$order->id}");
     }
 
     public function test_inventory_alert_command_creates_admin_and_apoteker_notifications(): void

@@ -23,9 +23,14 @@ class NotificationController extends Controller
 
         $notifications = $this->visibleQuery($request)
             ->when($request->boolean('unread'), fn ($query) => $query->whereNull('read_at'))
-            ->latest()
+            ->orderByRaw('CASE WHEN read_at IS NULL THEN 0 ELSE 1 END')
+            ->latest('created_at')
             ->paginate($filters['per_page'] ?? 15)
             ->withQueryString();
+
+        $notifications->getCollection()->transform(
+            fn (Notification $notification): array => $this->serializeNotification($request, $notification),
+        );
 
         return response()->json($notifications);
     }
@@ -58,7 +63,7 @@ class NotificationController extends Controller
 
         return response()->json([
             'message' => 'Notifikasi ditandai sudah dibaca.',
-            'data' => $notification->fresh(),
+            'data' => $this->serializeNotification($request, $notification->fresh()),
         ]);
     }
 
@@ -87,5 +92,32 @@ class NotificationController extends Controller
                 $query->where('user_id', $user->id)
                     ->orWhere('role_target', $user->role);
             });
+    }
+
+    /** @return array<string, mixed> */
+    private function serializeNotification(Request $request, Notification $notification): array
+    {
+        $payload = [
+            'id' => $notification->id,
+            'title' => $notification->title,
+            'message' => $notification->message,
+            'type' => $notification->type,
+            'severity' => $notification->severity,
+            'is_read' => $notification->is_read,
+            'read_at' => $notification->read_at,
+            'created_at' => $notification->created_at,
+            'target_url' => null,
+        ];
+        $orderId = data_get($notification->data, 'order_id');
+
+        if ($orderId) {
+            $payload['target_url'] = match ($request->user()->role) {
+                'pelanggan' => "/my-orders/{$orderId}",
+                'apoteker' => '/admin/prescription',
+                default => "/admin/orders?order={$orderId}",
+            };
+        }
+
+        return $payload;
     }
 }

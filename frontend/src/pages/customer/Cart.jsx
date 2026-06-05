@@ -23,6 +23,7 @@ export default function Cart() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [updatingId, setUpdatingId] = useState(null)
+  const [itemErrors, setItemErrors] = useState({})
 
   const fetchCart = async () => {
     setLoading(true)
@@ -39,13 +40,12 @@ export default function Cart() {
   }
 
   useEffect(() => {
-    // Keranjang disinkronkan dari API saat halaman pertama kali dibuka.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchCart()
   }, [])
 
   const updateQuantity = async (item, quantity) => {
-    if (quantity < 1) {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > item.medicine.total_stock) {
+      setItemErrors((current) => ({ ...current, [item.id]: quantity > item.medicine.total_stock ? 'Jumlah melebihi stok tersedia.' : 'Jumlah minimal 1.' }))
       return
     }
 
@@ -55,8 +55,9 @@ export default function Cart() {
     try {
       const response = await api.put(`/cart/items/${item.id}`, { quantity })
       setCart(response.data.data || emptyCart)
+      setItemErrors((current) => ({ ...current, [item.id]: '' }))
     } catch (err) {
-      setError(err.response?.data?.message || 'Gagal memperbarui jumlah item.')
+      setItemErrors((current) => ({ ...current, [item.id]: err.response?.data?.message || 'Gagal memperbarui jumlah item.' }))
     } finally {
       setUpdatingId(null)
     }
@@ -122,7 +123,7 @@ export default function Cart() {
               ) : (
                 <div className="divide-y divide-outline-variant">
                   {cart.items.map((item) => (
-                    <CartItemRow key={item.id} item={item} updating={updatingId === item.id} onDelete={() => deleteItem(item)} onUpdate={(quantity) => updateQuantity(item, quantity)} />
+                    <CartItemRow key={item.id} error={itemErrors[item.id]} item={item} updating={updatingId === item.id} onDelete={() => deleteItem(item)} onUpdate={(quantity) => updateQuantity(item, quantity)} />
                   ))}
                 </div>
               )}
@@ -152,9 +153,21 @@ export default function Cart() {
   )
 }
 
-function CartItemRow({ item, onDelete, onUpdate, updating }) {
+function CartItemRow({ error, item, onDelete, onUpdate, updating }) {
   const [imageBroken, setImageBroken] = useState(false)
+  const [quantity, setQuantity] = useState(String(item.quantity))
   const medicine = item.medicine
+
+  const commitQuantity = () => {
+    const nextQuantity = Number(quantity)
+    if (nextQuantity === item.quantity) return
+    onUpdate(nextQuantity)
+  }
+
+  const changeQuantity = (nextQuantity) => {
+    setQuantity(String(nextQuantity))
+    onUpdate(nextQuantity)
+  }
 
   return (
     <div className="flex gap-6 p-6">
@@ -175,15 +188,27 @@ function CartItemRow({ item, onDelete, onUpdate, updating }) {
         </div>
         <div className="mt-4 flex items-center justify-between">
           <div className="flex items-center rounded-lg border border-outline">
-            <button className="px-3 py-1 disabled:opacity-40" type="button" disabled={updating || item.quantity <= 1} onClick={() => onUpdate(item.quantity - 1)}>-</button>
-            <span className="px-4">{item.quantity}</span>
-            <button className="px-3 py-1 disabled:opacity-40" type="button" disabled={updating || item.quantity >= medicine?.total_stock} onClick={() => onUpdate(item.quantity + 1)}>+</button>
+            <button className="px-3 py-1 disabled:opacity-40" type="button" disabled={updating || item.quantity <= 1} onClick={() => changeQuantity(item.quantity - 1)}>-</button>
+            <input
+              aria-label={`Jumlah ${medicine?.name}`}
+              className="w-16 border-x border-outline px-2 py-1 text-center outline-none focus:bg-primary-container/20"
+              disabled={updating}
+              min="1"
+              max={medicine?.total_stock}
+              type="number"
+              value={quantity}
+              onBlur={commitQuantity}
+              onChange={(event) => setQuantity(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
+            />
+            <button className="px-3 py-1 disabled:opacity-40" type="button" disabled={updating || item.quantity >= medicine?.total_stock} onClick={() => changeQuantity(item.quantity + 1)}>+</button>
           </div>
           <button className="flex items-center gap-1 text-sm font-bold text-error disabled:opacity-40" type="button" disabled={updating} onClick={onDelete}>
             <span className="material-symbols-outlined text-[18px]">delete</span> Hapus
           </button>
         </div>
         <p className="mt-2 text-xs text-on-surface-variant">Stok tersedia: {medicine?.total_stock ?? 0}</p>
+        {error && <p className="mt-1 text-xs font-semibold text-error">{error}</p>}
       </div>
     </div>
   )

@@ -961,7 +961,7 @@ function BatchModal({
           {isAdmin && (
             <form className="mt-5 grid gap-3 rounded-lg bg-surface-container-low p-4 md:grid-cols-5" onSubmit={onSubmitBatch}>
               <Field label="Batch" name="batch_number" value={batchForm.batch_number} onChange={onBatchChange} required compact />
-              <Field label="Kadaluarsa" name="expired_date" type="date" value={batchForm.expired_date} onChange={onBatchChange} required compact />
+              <Field label="Kadaluarsa" min={new Date().toISOString().slice(0, 10)} name="expired_date" type="date" value={batchForm.expired_date} onChange={onBatchChange} required compact />
               <Field label="Qty" name="quantity" type="number" value={batchForm.quantity} onChange={onBatchChange} required compact />
               <Field label="Harga Beli" name="purchase_price" type="number" value={batchForm.purchase_price} onChange={onBatchChange} compact />
               <div className="mt-auto flex gap-2">
@@ -976,8 +976,8 @@ function BatchModal({
   )
 }
 
-function Field({ compact = false, label, name, onChange, required = false, type = 'text', value }) {
-  return <label className="text-sm font-semibold">{label}<input className={`mt-1 w-full rounded-lg border border-outline-variant px-4 font-normal outline-none focus:border-primary ${compact ? 'py-2' : 'py-2.5'}`} name={name} type={type} value={value} onChange={onChange} required={required} /></label>
+function Field({ compact = false, label, min, name, onChange, required = false, type = 'text', value }) {
+  return <label className="text-sm font-semibold">{label}<input className={`mt-1 w-full rounded-lg border border-outline-variant px-4 font-normal outline-none focus:border-primary ${compact ? 'py-2' : 'py-2.5'}`} min={min} name={name} type={type} value={value} onChange={onChange} required={required} /></label>
 }
 
 function SelectField({ label, name, onChange, options, placeholder = 'Pilih', required = false, value }) {

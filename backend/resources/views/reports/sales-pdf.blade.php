@@ -19,6 +19,14 @@
         th { background: #e6fffb; color: #0f766e; text-align: left; }
         th, td { border: 1px solid #d1d5db; padding: 7px; }
         .right { text-align: right; }
+        .chart { margin-top: 10px; padding: 12px; border: 1px solid #d1d5db; background: #f9fafb; }
+        .chart-row { width: 100%; margin-bottom: 7px; }
+        .chart-label { display: inline-block; width: 14%; font-size: 9px; vertical-align: middle; }
+        .chart-track { display: inline-block; width: 62%; height: 13px; background: #dbeafe; vertical-align: middle; }
+        .chart-bar { height: 13px; background: #0f766e; }
+        .chart-value { display: inline-block; width: 21%; padding-left: 6px; font-size: 9px; text-align: right; vertical-align: middle; }
+        .section { page-break-inside: avoid; }
+        .data-section { page-break-before: auto; }
     </style>
 </head>
 <body>
@@ -26,31 +34,36 @@
         <span class="logo">KMJ</span>
         <span class="title">
             <h1>Klinik Makmur Jaya</h1>
-            <div>Laporan Penjualan</div>
+            <div><strong>Laporan Penjualan</strong></div>
             <div>Periode {{ $from->toDateString() }} s/d {{ $to->toDateString() }}</div>
+            <div>Dibuat {{ $generatedAt->format('Y-m-d H:i:s') }}</div>
         </span>
     </div>
 
     <div class="cards">
-        <div class="card"><div class="label">Transaksi</div><div class="value">{{ $payload['sales']['summary']['total_transactions'] }}</div></div>
-        <div class="card"><div class="label">Omzet</div><div class="value">Rp {{ number_format($payload['sales']['summary']['total_revenue'], 0, ',', '.') }}</div></div>
-        <div class="card"><div class="label">Rata-rata</div><div class="value">Rp {{ number_format($payload['sales']['summary']['average_order_value'], 0, ',', '.') }}</div></div>
-        <div class="card"><div class="label">Item Terjual</div><div class="value">{{ $payload['sales']['summary']['items_sold'] }}</div></div>
+        <div class="card"><div class="label">Total Transaksi</div><div class="value">{{ $payload['sales']['summary']['total_transactions'] }}</div></div>
+        <div class="card"><div class="label">Total Omzet</div><div class="value">Rp {{ number_format($payload['sales']['summary']['total_revenue'], 0, ',', '.') }}</div></div>
+        <div class="card"><div class="label">Rata-rata Order</div><div class="value">Rp {{ number_format($payload['sales']['summary']['average_order_value'], 0, ',', '.') }}</div></div>
+        <div class="card"><div class="label">Jumlah Item Terjual</div><div class="value">{{ $payload['sales']['summary']['items_sold'] }}</div></div>
     </div>
 
-    <h2>Trend Penjualan</h2>
-    <table>
-        <thead><tr><th>Periode</th><th class="right">Omzet</th><th class="right">Transaksi</th></tr></thead>
-        <tbody>
+    <div class="section">
+        <h2>Sales Trend</h2>
+        @php($maxRevenue = max(1, collect($payload['sales']['trend'])->max('revenue') ?? 0))
+        <div class="chart">
             @forelse ($payload['sales']['trend'] as $trend)
-                <tr><td>{{ $trend['label'] }}</td><td class="right">Rp {{ number_format($trend['revenue'], 0, ',', '.') }}</td><td class="right">{{ $trend['transactions'] }}</td></tr>
+                <div class="chart-row">
+                    <span class="chart-label">{{ $trend['label'] }}</span>
+                    <span class="chart-track"><span class="chart-bar" style="width: {{ max(0, min(100, ($trend['revenue'] / $maxRevenue) * 100)) }}%"></span></span>
+                    <span class="chart-value">Rp {{ number_format($trend['revenue'], 0, ',', '.') }}</span>
+                </div>
             @empty
-                <tr><td colspan="3">Tidak ada data penjualan.</td></tr>
+                <div class="muted">Tidak ada data penjualan pada periode ini.</div>
             @endforelse
-        </tbody>
-    </table>
+        </div>
+    </div>
 
-    <h2>Detail Transaksi</h2>
+    <h2 class="data-section">Detail Transaksi</h2>
     <table>
         <thead><tr><th>Order</th><th>Pelanggan</th><th>Tanggal</th><th>Status</th><th>Payment</th><th class="right">Total</th></tr></thead>
         <tbody>
