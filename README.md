@@ -79,10 +79,10 @@ klinik-makmur-jaya/
 │   ├── src/                  # Pages, components, context, API helper, utils
 │   ├── package.json          # Dependency dan script frontend
 │   └── vite.config.js        # Konfigurasi Vite
-├── Arsitektur_Infrastruktur.md
-├── Tools_Framework.md
-├── Migrasi_Pembaruan.md
-├── Dokumentasi_Pelanggan.md
+├── Arsitektur_Infrastruktur.pdf
+├── Tools_Framework.pdf
+├── Migrasi_Pembaruan.pdf
+├── Dokumentasi_Pelanggan.pdf
 └── README.md
 ```
 
