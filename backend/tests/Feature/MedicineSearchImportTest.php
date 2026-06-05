@@ -1,0 +1,112 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Category;
+use App\Models\Medicine;
+use App\Models\MedicineImport;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
+
+class MedicineSearchImportTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_autocomplete_search_returns_limited_results_with_filters(): void
+    {
+        $antibiotik = Category::create(['name' => 'Antibiotik']);
+        $vitamin = Category::create(['name' => 'Vitamin']);
+
+        Medicine::create([
+            'category_id' => $antibiotik->id,
+            'name' => 'Amoxicillin',
+            'price' => 15000,
+            'minimum_stock' => 0,
+            'requires_prescription' => true,
+            'is_active' => true,
+        ]);
+        Medicine::create([
+            'category_id' => $vitamin->id,
+            'name' => 'Amox Vitamin',
+            'price' => 12000,
+            'minimum_stock' => 0,
+            'requires_prescription' => false,
+            'is_active' => true,
+        ]);
+
+        $this->getJson("/api/catalog/medicines/autocomplete?q=amox&limit=1&category_id={$antibiotik->id}&requires_prescription=1")
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Amoxicillin')
+            ->assertJsonPath('data.0.category', 'Antibiotik');
+    }
+
+    public function test_autocomplete_handles_simple_typo(): void
+    {
+        $category = Category::create(['name' => 'Analgesik']);
+        Medicine::create([
+            'category_id' => $category->id,
+            'name' => 'Paracetamol',
+            'price' => 10000,
+            'minimum_stock' => 0,
+            'requires_prescription' => false,
+            'is_active' => true,
+        ]);
+
+        $this->getJson('/api/catalog/medicines/autocomplete?q=paracitamol&limit=5')
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'Paracetamol');
+    }
+
+    public function test_admin_can_upload_csv_import_and_sync_queue_processes_file(): void
+    {
+        Storage::fake('local');
+        $admin = User::factory()->create(['role' => User::ROLE_ADMIN]);
+        Sanctum::actingAs($admin);
+        $path = tempnam(sys_get_temp_dir(), 'medicine-import-');
+        file_put_contents($path, implode("\n", [
+            'name,category,price,supplier,minimum_stock,requires_prescription,is_active,batch_number,expired_date,quantity,purchase_price',
+            'Obat Import,Import Category,25000,Import Supplier,5,0,1,IMP-001,'.now()->addYear()->toDateString().',30,12000',
+        ]));
+
+        $file = new UploadedFile($path, 'medicines.csv', 'text/csv', null, true);
+
+        $response = $this->postJson('/api/admin/medicines/import', [
+            'file' => $file,
+        ])->assertAccepted();
+
+        $importId = $response->json('data.id');
+
+        $this->assertDatabaseHas('medicine_imports', [
+            'id' => $importId,
+            'status' => MedicineImport::STATUS_COMPLETED,
+            'processed_rows' => 1,
+            'failed_rows' => 0,
+        ]);
+        $this->assertDatabaseHas('medicines', [
+            'name' => 'Obat Import',
+            'price' => 25000,
+        ]);
+        $this->assertDatabaseHas('medicine_batches', [
+            'batch_number' => 'IMP-001',
+            'quantity' => 30,
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'user_id' => $admin->id,
+            'action' => 'import',
+            'module' => 'medicine',
+            'status' => 'success',
+        ]);
+    }
+
+    public function test_non_admin_cannot_import_medicines(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => User::ROLE_APOTEKER]));
+
+        $this->postJson('/api/admin/medicines/import')->assertForbidden();
+    }
+}
