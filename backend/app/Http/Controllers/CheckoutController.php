@@ -45,7 +45,7 @@ class CheckoutController extends Controller
         }
 
         $cart = Cart::firstOrCreate(['user_id' => $request->user()->id]);
-        $cart->load(['items.medicine.batches']);
+        $cart->load(['items.medicine.batches', 'items.medicine.variants', 'items.variant.batches']);
 
         if ($cart->items->isEmpty()) {
             $this->auditLogger->failed($request, 'checkout', 'order', 'Cart is empty', 'Checkout gagal karena keranjang kosong.', [
@@ -83,6 +83,27 @@ class CheckoutController extends Controller
                     'message' => 'Salah satu obat di keranjang sudah tidak tersedia.',
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
+
+            if ($item->medicine->has_variants
+                && (! $item->variant
+                    || ! $item->variant->is_active
+                    || $item->variant->medicine_id !== $item->medicine_id)) {
+                $this->auditLogger->failed($request, 'checkout', 'order', 'Invalid medicine variant', 'Checkout gagal karena varian obat tidak valid.', [
+                    'cart_id' => $cart->id,
+                    'medicine_id' => $item->medicine_id,
+                    'medicine_variant_id' => $item->medicine_variant_id,
+                ], httpStatus: Response::HTTP_UNPROCESSABLE_ENTITY);
+
+                return response()->json([
+                    'message' => 'Pilih varian yang valid untuk semua obat di keranjang.',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            if (! $item->medicine->has_variants && $item->medicine_variant_id !== null) {
+                return response()->json([
+                    'message' => 'Varian tidak valid untuk salah satu obat di keranjang.',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
         }
 
         try {
@@ -94,6 +115,7 @@ class CheckoutController extends Controller
                     $allocations[$item->id] = $this->inventoryService->prepareFifoAllocation(
                         $item->medicine,
                         $item->quantity,
+                        $item->variant,
                     );
                 }
 
@@ -124,8 +146,11 @@ class CheckoutController extends Controller
                 foreach ($cart->items as $item) {
                     $orderItem = $order->items()->create([
                         'medicine_id' => $item->medicine_id,
+                        'medicine_variant_id' => $item->variant?->id,
                         'medicine_name' => $item->medicine->name,
-                        'price' => $item->medicine->price,
+                        'variant_name' => $item->variant?->name,
+                        'price' => $item->unit_price,
+                        'variant_price' => $item->variant?->price,
                         'quantity' => $item->quantity,
                         'subtotal' => $item->line_total,
                         'requires_prescription' => (bool) $item->medicine->requires_prescription,
@@ -146,7 +171,7 @@ class CheckoutController extends Controller
 
                 $cart->items()->delete();
 
-                return $order->load(['items.medicine.category', 'items.batchUsages.medicineBatch', 'prescription']);
+                return $order->load(['items.medicine.category', 'items.variant', 'items.batchUsages.medicineBatch.variant', 'prescription']);
             });
         } catch (InsufficientStockException $exception) {
             $this->auditLogger->failed($request, 'checkout', 'order', 'Insufficient stock', "Checkout gagal karena stok {$exception->medicineName} tidak mencukupi.", [
@@ -172,6 +197,11 @@ class CheckoutController extends Controller
             'total' => $order->total,
             'item_count' => $order->items->count(),
             'has_prescription' => $order->prescription !== null,
+            'variants' => $order->items->map(fn ($item) => [
+                'medicine_id' => $item->medicine_id,
+                'medicine_variant_id' => $item->medicine_variant_id,
+                'variant_name' => $item->variant_name,
+            ])->all(),
         ]);
         $this->notificationService->notifyNewOrder($order);
 

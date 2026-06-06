@@ -44,8 +44,8 @@ export default function Cart() {
   }, [])
 
   const updateQuantity = async (item, quantity) => {
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > item.medicine.total_stock) {
-      setItemErrors((current) => ({ ...current, [item.id]: quantity > item.medicine.total_stock ? 'Jumlah melebihi stok tersedia.' : 'Jumlah minimal 1.' }))
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > item.available_stock) {
+      setItemErrors((current) => ({ ...current, [item.id]: quantity > item.available_stock ? 'Jumlah melebihi stok tersedia.' : 'Jumlah minimal 1.' }))
       return
     }
 
@@ -58,6 +58,24 @@ export default function Cart() {
       setItemErrors((current) => ({ ...current, [item.id]: '' }))
     } catch (err) {
       setItemErrors((current) => ({ ...current, [item.id]: err.response?.data?.message || 'Gagal memperbarui jumlah item.' }))
+    } finally {
+      setUpdatingId(null)
+    }
+  }
+
+  const updateVariant = async (item, medicineVariantId) => {
+    setUpdatingId(item.id)
+    setError('')
+
+    try {
+      const response = await api.put(`/cart/items/${item.id}`, {
+        quantity: item.quantity,
+        medicine_variant_id: medicineVariantId || null,
+      })
+      setCart(response.data.data || emptyCart)
+      setItemErrors((current) => ({ ...current, [item.id]: '' }))
+    } catch (err) {
+      setItemErrors((current) => ({ ...current, [item.id]: err.response?.data?.message || 'Gagal mengganti varian.' }))
     } finally {
       setUpdatingId(null)
     }
@@ -123,7 +141,7 @@ export default function Cart() {
               ) : (
                 <div className="divide-y divide-outline-variant">
                   {cart.items.map((item) => (
-                    <CartItemRow key={item.id} error={itemErrors[item.id]} item={item} updating={updatingId === item.id} onDelete={() => deleteItem(item)} onUpdate={(quantity) => updateQuantity(item, quantity)} />
+                    <CartItemRow key={`${item.id}-${item.quantity}-${item.medicine_variant_id || 'base'}`} error={itemErrors[item.id]} item={item} updating={updatingId === item.id} onDelete={() => deleteItem(item)} onUpdate={(quantity) => updateQuantity(item, quantity)} onVariantChange={(variantId) => updateVariant(item, variantId)} />
                   ))}
                 </div>
               )}
@@ -153,10 +171,11 @@ export default function Cart() {
   )
 }
 
-function CartItemRow({ error, item, onDelete, onUpdate, updating }) {
+function CartItemRow({ error, item, onDelete, onUpdate, onVariantChange, updating }) {
   const [imageBroken, setImageBroken] = useState(false)
   const [quantity, setQuantity] = useState(String(item.quantity))
   const medicine = item.medicine
+  const variants = medicine?.has_variants ? (medicine.variants || []) : []
 
   const commitQuantity = () => {
     const nextQuantity = Number(quantity)
@@ -181,11 +200,21 @@ function CartItemRow({ error, item, onDelete, onUpdate, updating }) {
       <div className="flex-grow">
         <div className="flex justify-between gap-4 font-bold">
           <div>
-            <Link to={`/catalog/${medicine?.id}`} className="hover:text-primary">{medicine?.name}</Link>
+            <Link to={`/catalog/${medicine?.id}`} className="hover:text-primary">{medicine?.name}{item.variant?.name ? ` — ${item.variant.name}` : ''}</Link>
             {medicine?.requires_prescription && <span className="mt-1 block w-fit rounded-full bg-error-container px-2 py-0.5 text-[10px] text-on-error-container">BUTUH RESEP</span>}
           </div>
           <span className="text-primary">{formatCurrency(item.line_total)}</span>
         </div>
+        {medicine?.has_variants && (
+          <label className="mt-3 block max-w-xs text-xs font-bold text-on-surface">
+            Ganti Varian
+            <select className="mt-1 w-full rounded-lg border border-outline-variant bg-white px-3 py-2 font-normal" disabled={updating} value={item.medicine_variant_id || ''} onChange={(event) => onVariantChange(event.target.value)}>
+              {variants.map((variant) => (
+                <option key={variant.id} value={variant.id}>{variant.name} - {formatCurrency(variant.price)} - Stok {variant.stock}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="mt-4 flex items-center justify-between">
           <div className="flex items-center rounded-lg border border-outline">
             <button className="px-3 py-1 disabled:opacity-40" type="button" disabled={updating || item.quantity <= 1} onClick={() => changeQuantity(item.quantity - 1)}>-</button>
@@ -194,20 +223,20 @@ function CartItemRow({ error, item, onDelete, onUpdate, updating }) {
               className="w-16 border-x border-outline px-2 py-1 text-center outline-none focus:bg-primary-container/20"
               disabled={updating}
               min="1"
-              max={medicine?.total_stock}
+              max={item.available_stock}
               type="number"
               value={quantity}
               onBlur={commitQuantity}
               onChange={(event) => setQuantity(event.target.value)}
               onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
             />
-            <button className="px-3 py-1 disabled:opacity-40" type="button" disabled={updating || item.quantity >= medicine?.total_stock} onClick={() => changeQuantity(item.quantity + 1)}>+</button>
+            <button className="px-3 py-1 disabled:opacity-40" type="button" disabled={updating || item.quantity >= item.available_stock} onClick={() => changeQuantity(item.quantity + 1)}>+</button>
           </div>
           <button className="flex items-center gap-1 text-sm font-bold text-error disabled:opacity-40" type="button" disabled={updating} onClick={onDelete}>
             <span className="material-symbols-outlined text-[18px]">delete</span> Hapus
           </button>
         </div>
-        <p className="mt-2 text-xs text-on-surface-variant">Stok tersedia: {medicine?.total_stock ?? 0}</p>
+        <p className="mt-2 text-xs text-on-surface-variant">Harga satuan: {formatCurrency(item.unit_price)} · Stok tersedia: {item.available_stock ?? 0}</p>
         {error && <p className="mt-1 text-xs font-semibold text-error">{error}</p>}
       </div>
     </div>

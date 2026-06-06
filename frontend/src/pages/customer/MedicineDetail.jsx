@@ -4,6 +4,7 @@ import api from '../../api/axios'
 import Footer from '../../components/Footer'
 import Navbar from '../../components/Navbar'
 import { useAuth } from '../../context/AuthContext'
+import { activeVariants, formatMedicinePrice } from '../../utils/medicinePricing'
 
 const formatCurrency = (value) =>
   new Intl.NumberFormat('id-ID', {
@@ -21,6 +22,7 @@ export default function MedicineDetail() {
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false)
   const [imageBroken, setImageBroken] = useState(false)
+  const [selectedVariantId, setSelectedVariantId] = useState('')
 
   useEffect(() => {
     const fetchMedicine = async () => {
@@ -30,6 +32,7 @@ export default function MedicineDetail() {
       try {
         const response = await api.get(`/catalog/medicines/${id}`)
         setMedicine(response.data.data)
+        setSelectedVariantId('')
       } catch (err) {
         setError(err.response?.data?.message || 'Gagal memuat detail obat.')
       } finally {
@@ -52,6 +55,7 @@ export default function MedicineDetail() {
     try {
       await api.post('/cart/items', {
         medicine_id: medicine.id,
+        medicine_variant_id: selectedVariant?.id,
         quantity: 1,
       })
       navigate('/cart')
@@ -61,6 +65,12 @@ export default function MedicineDetail() {
       setAdding(false)
     }
   }
+
+  const variants = activeVariants(medicine)
+  const selectedVariant = variants.find((variant) => String(variant.id) === String(selectedVariantId))
+  const effectivePrice = selectedVariant?.price ?? medicine?.price
+  const effectiveStock = selectedVariant?.stock ?? medicine?.total_stock ?? 0
+  const canAdd = !medicine?.has_variants || selectedVariant
 
   return (
     <div className="flex min-h-screen flex-col bg-surface">
@@ -90,13 +100,24 @@ export default function MedicineDetail() {
               <div className="mb-4 flex flex-wrap gap-2">
                 <span className="rounded-full bg-secondary-container px-3 py-1 text-xs font-bold text-secondary">{medicine.category?.name || 'Tanpa kategori'}</span>
                 {medicine.requires_prescription && <span className="rounded-full bg-error-container px-3 py-1 text-xs font-bold text-on-error-container">Resep Diperlukan</span>}
-                <span className={`rounded-full px-3 py-1 text-xs font-bold ${medicine.total_stock > 0 ? 'bg-green-100 text-green-800' : 'bg-slate-200 text-slate-700'}`}>{medicine.total_stock > 0 ? 'Tersedia' : 'Stok Habis'}</span>
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${effectiveStock > 0 ? 'bg-green-100 text-green-800' : 'bg-slate-200 text-slate-700'}`}>{effectiveStock > 0 ? 'Tersedia' : 'Stok Habis'}</span>
               </div>
               <h1 className="text-4xl font-bold text-on-surface">{medicine.name}</h1>
               <p className="mt-3 text-on-surface-variant">{medicine.description || 'Deskripsi obat belum tersedia.'}</p>
-              <div className="my-6 text-3xl font-bold text-primary">{formatCurrency(medicine.price)}</div>
+              <div className="my-6 text-3xl font-bold text-primary">{selectedVariant ? formatCurrency(effectivePrice) : formatMedicinePrice(medicine, formatCurrency)}</div>
+              {medicine.has_variants && (
+                <label className="mb-6 block text-sm font-bold">
+                  Pilih Varian
+                  <select className="mt-2 w-full rounded-lg border border-outline-variant bg-white px-4 py-3 font-normal" value={selectedVariantId} onChange={(event) => setSelectedVariantId(event.target.value)}>
+                    <option value="">Pilih varian</option>
+                    {variants.map((variant) => (
+                      <option key={variant.id} value={variant.id}>{variant.name} - {formatCurrency(variant.price)} - Stok {variant.stock}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div className="mb-6 grid gap-4 md:grid-cols-2">
-                <InfoCard label="Stok" value={`${medicine.total_stock} unit`} />
+                <InfoCard label="Stok" value={`${effectiveStock} unit`} />
                 <InfoCard label="Supplier" value={medicine.supplier?.name || '-'} />
                 <InfoCard label="Dosis" value={medicine.dosage || '-'} />
                 <InfoCard label="Efek Samping" value={medicine.side_effects || '-'} />
@@ -106,8 +127,8 @@ export default function MedicineDetail() {
                 <p className="text-sm leading-6 text-on-surface-variant">{medicine.composition || '-'}</p>
               </section>
               {error && <div className="mb-4 rounded-lg bg-error-container px-4 py-3 text-sm font-semibold text-on-error-container">{error}</div>}
-              <button className="w-full rounded-lg bg-primary py-4 font-bold text-white shadow-lg disabled:bg-outline" type="button" disabled={medicine.total_stock <= 0 || adding} onClick={addToCart}>
-                {adding ? 'Menambahkan...' : medicine.total_stock > 0 ? 'Tambah ke Keranjang' : 'Stok Habis'}
+              <button className="w-full rounded-lg bg-primary py-4 font-bold text-white shadow-lg disabled:bg-outline" type="button" disabled={!canAdd || effectiveStock <= 0 || adding} onClick={addToCart}>
+                {adding ? 'Menambahkan...' : !canAdd ? 'Pilih Varian' : effectiveStock > 0 ? 'Tambah ke Keranjang' : 'Stok Habis'}
               </button>
             </div>
           </section>

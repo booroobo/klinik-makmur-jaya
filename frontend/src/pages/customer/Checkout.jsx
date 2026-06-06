@@ -79,6 +79,20 @@ export default function Checkout() {
     }))
   }
 
+  const updateCartVariant = async (item, medicineVariantId) => {
+    setError('')
+
+    try {
+      const response = await api.put(`/cart/items/${item.id}`, {
+        quantity: item.quantity,
+        medicine_variant_id: medicineVariantId || null,
+      })
+      setCart(response.data.data || emptyCart)
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Gagal mengganti varian.'))
+    }
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     setSubmitting(true)
@@ -211,7 +225,15 @@ export default function Checkout() {
                     <div key={item.id} className="flex justify-between gap-4 border-b border-outline-variant pb-3 text-sm">
                       <div>
                         <p className="font-bold">{item.medicine?.name}</p>
-                        <p className="text-on-surface-variant">{item.quantity} x {formatCurrency(item.medicine?.price)}</p>
+                        {item.variant?.name && <p className="text-xs font-semibold text-primary">Varian: {item.variant.name}</p>}
+                        {item.medicine?.has_variants && (
+                          <select className="mt-2 w-full rounded-lg border border-outline-variant bg-white px-2 py-1 text-xs" value={item.medicine_variant_id || ''} onChange={(event) => updateCartVariant(item, event.target.value)}>
+                            {(item.medicine?.variants || []).map((variant) => (
+                              <option key={variant.id} value={variant.id}>{variant.name} - {formatCurrency(variant.price)} - Stok {variant.stock}</option>
+                            ))}
+                          </select>
+                        )}
+                        <p className="text-on-surface-variant">{item.quantity} x {formatCurrency(item.unit_price)}</p>
                       </div>
                       <span className="font-bold text-primary">{formatCurrency(item.line_total)}</span>
                     </div>

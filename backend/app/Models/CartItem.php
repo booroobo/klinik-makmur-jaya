@@ -13,6 +13,7 @@ class CartItem extends Model
     protected $fillable = [
         'cart_id',
         'medicine_id',
+        'medicine_variant_id',
         'quantity',
     ];
 
@@ -22,6 +23,8 @@ class CartItem extends Model
 
     protected $appends = [
         'line_total',
+        'unit_price',
+        'available_stock',
     ];
 
     public function cart(): BelongsTo
@@ -34,8 +37,25 @@ class CartItem extends Model
         return $this->belongsTo(Medicine::class);
     }
 
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(MedicineVariant::class, 'medicine_variant_id');
+    }
+
+    public function getUnitPriceAttribute(): float
+    {
+        return (float) ($this->variant?->price ?? $this->medicine?->price ?? 0);
+    }
+
+    public function getAvailableStockAttribute(): int
+    {
+        return $this->variant
+            ? $this->variant->stock
+            : (int) ($this->medicine?->total_stock ?? 0);
+    }
+
     public function getLineTotalAttribute(): float
     {
-        return (float) ($this->medicine?->price ?? 0) * $this->quantity;
+        return $this->unit_price * $this->quantity;
     }
 }

@@ -147,6 +147,56 @@ class MedicineSearchImportTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_import_medicine_variants_and_variant_batches_from_csv(): void
+    {
+        Storage::fake('local');
+        $admin = User::factory()->create(['role' => User::ROLE_ADMIN]);
+        Sanctum::actingAs($admin);
+        $path = tempnam(sys_get_temp_dir(), 'medicine-variant-import-');
+        file_put_contents($path, implode("\n", [
+            'name,category,has_variants,variant_name,variant_price,variant_sku,batch_number,expired_date,quantity,purchase_price',
+            'Vicks,Obat Gosok,1,30ml,18000,VICKS-30,VICKS-30-001,'.now()->addYear()->toDateString().',12,9000',
+            'Vicks,Obat Gosok,1,100ml,45000,VICKS-100,VICKS-100-001,'.now()->addYear()->toDateString().',7,22000',
+        ]));
+
+        $file = new UploadedFile($path, 'medicine-variants.csv', 'text/csv', null, true);
+
+        $this->postJson('/api/admin/medicines/import', [
+            'file' => $file,
+        ])->assertAccepted();
+
+        $this->assertDatabaseHas('medicine_imports', [
+            'status' => MedicineImport::STATUS_COMPLETED,
+            'processed_rows' => 2,
+            'failed_rows' => 0,
+        ]);
+        $this->assertDatabaseHas('medicines', [
+            'name' => 'Vicks',
+            'has_variants' => true,
+            'price' => 18000,
+        ]);
+        $medicineId = Medicine::where('name', 'Vicks')->value('id');
+        $this->assertDatabaseHas('medicine_variants', [
+            'medicine_id' => $medicineId,
+            'name' => '30ml',
+            'price' => 18000,
+            'sku' => 'VICKS-30',
+        ]);
+        $this->assertDatabaseHas('medicine_variants', [
+            'medicine_id' => $medicineId,
+            'name' => '100ml',
+            'price' => 45000,
+            'sku' => 'VICKS-100',
+        ]);
+        $variantId = \App\Models\MedicineVariant::where('medicine_id', $medicineId)->where('name', '100ml')->value('id');
+        $this->assertDatabaseHas('medicine_batches', [
+            'medicine_id' => $medicineId,
+            'medicine_variant_id' => $variantId,
+            'batch_number' => 'VICKS-100-001',
+            'quantity' => 7,
+        ]);
+    }
+
     public function test_non_admin_cannot_import_medicines(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => User::ROLE_APOTEKER]));

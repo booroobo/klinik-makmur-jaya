@@ -7,6 +7,7 @@ import Footer from '../../components/Footer'
 import Navbar from '../../components/Navbar'
 import Toast from '../../components/Toast'
 import { useAuth } from '../../context/AuthContext'
+import { formatMedicinePrice } from '../../utils/medicinePricing'
 
 const formatCurrency = (value) =>
   new Intl.NumberFormat('id-ID', {
@@ -34,6 +35,7 @@ export default function Catalog() {
   const [addingId, setAddingId] = useState(null)
   const [showAllCategories, setShowAllCategories] = useState(false)
   const [cartModalMedicine, setCartModalMedicine] = useState(null)
+  const [cartVariantId, setCartVariantId] = useState('')
   const [cartQuantity, setCartQuantity] = useState(1)
   const [cartModalError, setCartModalError] = useState('')
   const [toast, setToast] = useState(null)
@@ -156,6 +158,7 @@ export default function Catalog() {
     }
 
     setCartModalMedicine(medicine)
+    setCartVariantId('')
     setCartQuantity(1)
     setCartModalError('')
   }
@@ -166,13 +169,21 @@ export default function Catalog() {
     }
 
     const quantity = Number(cartQuantity)
+    const variants = cartModalMedicine.has_variants ? (cartModalMedicine.variants || []) : []
+    const selectedVariant = variants.find((variant) => String(variant.id) === String(cartVariantId))
+    const effectiveStock = selectedVariant?.stock ?? cartModalMedicine.total_stock
 
     if (!Number.isInteger(quantity) || quantity < 1) {
       setCartModalError('Jumlah minimal 1.')
       return
     }
 
-    if (quantity > cartModalMedicine.total_stock) {
+    if (cartModalMedicine.has_variants && !selectedVariant) {
+      setCartModalError('Varian wajib dipilih.')
+      return
+    }
+
+    if (quantity > effectiveStock) {
       setCartModalError('Jumlah melebihi stok tersedia.')
       return
     }
@@ -184,10 +195,12 @@ export default function Catalog() {
     try {
       const response = await api.post('/cart/items', {
         medicine_id: cartModalMedicine.id,
+        medicine_variant_id: selectedVariant?.id,
         quantity,
       })
       const addedItem = response.data.data?.items?.find(
-        (item) => item.medicine_id === cartModalMedicine.id,
+        (item) => item.medicine_id === cartModalMedicine.id
+          && (item.medicine_variant_id || null) === (selectedVariant?.id || null),
       )
 
       setCartModalMedicine(null)
@@ -335,8 +348,13 @@ export default function Catalog() {
         medicine={cartModalMedicine}
         quantity={cartQuantity}
         onBuyNow={() => addToCart({ buyNow: true })}
-        onClose={() => setCartModalMedicine(null)}
+        onClose={() => {
+          setCartModalMedicine(null)
+          setCartVariantId('')
+        }}
         onQuantityChange={setCartQuantity}
+        onVariantChange={setCartVariantId}
+        selectedVariantId={cartVariantId}
         onSubmitCart={() => addToCart({ buyNow: false })}
       />
       {toast && (
@@ -378,10 +396,10 @@ function MedicineCard({ adding, medicine, onAdd }) {
         <p className="mb-2 text-xs font-semibold text-primary">{medicine.category?.name || 'Tanpa kategori'}</p>
         <p className="mb-4 line-clamp-2 flex-grow text-sm text-on-surface-variant">{medicine.description || 'Detail obat belum tersedia.'}</p>
         <div className="mb-4 flex items-baseline justify-between gap-2">
-          <span className="text-2xl font-bold text-primary">{formatCurrency(medicine.price)}</span>
+          <span className="text-2xl font-bold text-primary">{formatMedicinePrice(medicine, formatCurrency)}</span>
           <span className="text-xs text-on-surface-variant">Stok {medicine.total_stock}</span>
         </div>
-        <button className="w-full rounded-lg bg-primary py-3 font-bold text-white transition-all hover:opacity-90 active:scale-95 disabled:bg-outline" type="button" disabled={!stockAvailable || adding} onClick={onAdd}>
+        <button className="w-full rounded-lg bg-primary py-3 font-bold text-white transition-all hover:opacity-90 active:scale-95 disabled:bg-outline" type="button" disabled={!stockAvailable || adding} onClick={() => onAdd(medicine)}>
           {adding ? 'Menambahkan...' : stockAvailable ? 'Tambahkan ke Keranjang' : 'Stok Habis'}
         </button>
       </div>

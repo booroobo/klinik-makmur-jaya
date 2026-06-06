@@ -5,13 +5,18 @@ namespace App\Http\Controllers;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Medicine;
+use App\Models\MedicineVariant;
+use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 class CartController extends Controller
 {
+    public function __construct(private readonly AuditLogger $auditLogger) {}
+
     public function show(Request $request): JsonResponse
     {
         return response()->json([
@@ -23,19 +28,30 @@ class CartController extends Controller
     {
         $data = $request->validate([
             'medicine_id' => ['required', 'integer', Rule::exists('medicines', 'id')],
+            'medicine_variant_id' => ['nullable', 'integer'],
             'quantity' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $cart = $this->cartForUser($request);
         $medicine = Medicine::where('is_active', true)->findOrFail($data['medicine_id']);
+        $variant = $this->resolveVariant($medicine, $data['medicine_variant_id'] ?? null);
         $quantity = $data['quantity'] ?? 1;
-        $item = $cart->items()->firstOrNew(['medicine_id' => $medicine->id]);
+        $item = $cart->items()->firstOrNew([
+            'medicine_id' => $medicine->id,
+            'medicine_variant_id' => $variant?->id,
+        ]);
         $nextQuantity = ($item->exists ? $item->quantity : 0) + $quantity;
 
-        $this->ensureStockAvailable($medicine, $nextQuantity);
+        $this->ensureStockAvailable($medicine, $variant, $nextQuantity);
 
         $item->quantity = $nextQuantity;
         $item->save();
+
+        $this->auditLogger->success($request, 'add_item', 'cart', 'Item ditambahkan ke keranjang.', [
+            'medicine_id' => $medicine->id,
+            'medicine_variant_id' => $variant?->id,
+            'quantity' => $quantity,
+        ]);
 
         return response()->json([
             'message' => 'Obat berhasil ditambahkan ke keranjang.',
@@ -49,10 +65,40 @@ class CartController extends Controller
 
         $data = $request->validate([
             'quantity' => ['required', 'integer', 'min:1'],
+            'medicine_variant_id' => ['sometimes', 'nullable', 'integer'],
         ]);
 
-        $this->ensureStockAvailable($cartItem->medicine, $data['quantity']);
-        $cartItem->update(['quantity' => $data['quantity']]);
+        $medicine = $cartItem->medicine;
+        $variantId = array_key_exists('medicine_variant_id', $data)
+            ? $data['medicine_variant_id']
+            : $cartItem->medicine_variant_id;
+        $variant = $this->resolveVariant($medicine, $variantId);
+        $targetItem = $cartItem->cart->items()
+            ->where('medicine_id', $medicine->id)
+            ->where('id', '!=', $cartItem->id)
+            ->when($variant, fn ($query) => $query->where('medicine_variant_id', $variant->id))
+            ->when(! $variant, fn ($query) => $query->whereNull('medicine_variant_id'))
+            ->first();
+        $nextQuantity = $data['quantity'] + ($targetItem?->quantity ?? 0);
+
+        $this->ensureStockAvailable($medicine, $variant, $nextQuantity);
+
+        if ($targetItem) {
+            $targetItem->update(['quantity' => $nextQuantity]);
+            $cartItem->delete();
+        } else {
+            $cartItem->update([
+                'medicine_variant_id' => $variant?->id,
+                'quantity' => $data['quantity'],
+            ]);
+        }
+
+        $this->auditLogger->success($request, 'update_item', 'cart', 'Item keranjang diperbarui.', [
+            'cart_item_id' => $cartItem->id,
+            'medicine_id' => $medicine->id,
+            'medicine_variant_id' => $variant?->id,
+            'quantity' => $nextQuantity,
+        ]);
 
         return response()->json([
             'message' => 'Jumlah item keranjang berhasil diperbarui.',
@@ -99,6 +145,8 @@ class CartController extends Controller
             'items.medicine.category',
             'items.medicine.supplier',
             'items.medicine.batches',
+            'items.medicine.variants.batches',
+            'items.variant.batches',
         ]);
 
         return [
@@ -110,11 +158,48 @@ class CartController extends Controller
         ];
     }
 
-    private function ensureStockAvailable(Medicine $medicine, int $quantity): void
+    private function ensureStockAvailable(Medicine $medicine, ?MedicineVariant $variant, int $quantity): void
     {
-        if ($quantity > $medicine->total_stock) {
-            abort(Response::HTTP_UNPROCESSABLE_ENTITY, 'Jumlah melebihi stok tersedia.');
+        $availableStock = $variant?->stock ?? $medicine->total_stock;
+
+        if ($quantity > $availableStock) {
+            throw ValidationException::withMessages([
+                'quantity' => [$variant ? 'Jumlah melebihi stok tersedia untuk varian yang dipilih.' : 'Jumlah melebihi stok tersedia.'],
+            ]);
         }
+    }
+
+    private function resolveVariant(Medicine $medicine, mixed $variantId): ?MedicineVariant
+    {
+        if (! $medicine->has_variants) {
+            if ($variantId !== null && $variantId !== '') {
+                throw ValidationException::withMessages([
+                    'medicine_variant_id' => ['Obat ini tidak memiliki varian.'],
+                ]);
+            }
+
+            return null;
+        }
+
+        if ($variantId === null || $variantId === '') {
+            throw ValidationException::withMessages([
+                'medicine_variant_id' => ['Varian wajib dipilih.'],
+            ]);
+        }
+
+        $variant = $medicine->variants()
+            ->with('batches')
+            ->whereKey($variantId)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $variant) {
+            throw ValidationException::withMessages([
+                'medicine_variant_id' => ['Varian tidak valid atau sudah tidak aktif.'],
+            ]);
+        }
+
+        return $variant;
     }
 
     private function ensureOwnItem(Request $request, CartItem $cartItem): void

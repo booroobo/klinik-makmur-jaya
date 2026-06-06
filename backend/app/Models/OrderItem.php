@@ -14,8 +14,11 @@ class OrderItem extends Model
     protected $fillable = [
         'order_id',
         'medicine_id',
+        'medicine_variant_id',
         'medicine_name',
+        'variant_name',
         'price',
+        'variant_price',
         'quantity',
         'subtotal',
         'requires_prescription',
@@ -23,6 +26,7 @@ class OrderItem extends Model
 
     protected $casts = [
         'price' => 'decimal:2',
+        'variant_price' => 'decimal:2',
         'quantity' => 'integer',
         'subtotal' => 'decimal:2',
         'requires_prescription' => 'boolean',
@@ -36,6 +40,11 @@ class OrderItem extends Model
     public function medicine(): BelongsTo
     {
         return $this->belongsTo(Medicine::class);
+    }
+
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(MedicineVariant::class, 'medicine_variant_id');
     }
 
     public function batchUsages(): HasMany

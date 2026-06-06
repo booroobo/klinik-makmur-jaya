@@ -185,7 +185,8 @@ class OrderController extends Controller
         return [
             'user:id,name,email',
             'items.medicine.category',
-            'items.batchUsages.medicineBatch',
+            'items.variant',
+            'items.batchUsages.medicineBatch.variant',
             'prescription',
         ];
     }

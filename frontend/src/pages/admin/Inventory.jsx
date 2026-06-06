@@ -18,12 +18,15 @@ const emptyForm = {
   dosage: '',
   side_effects: '',
   price: '',
+  has_variants: false,
+  variants: [],
   minimum_stock: '',
   requires_prescription: false,
   is_active: true,
 }
 
 const emptyBatchForm = {
+  medicine_variant_id: '',
   batch_number: '',
   expired_date: '',
   quantity: '',
@@ -49,6 +52,16 @@ const getApiErrorMessage = (err, fallback) => {
 
 const appendMedicinePayload = (payload, form, imageFile) => {
   Object.entries(form).forEach(([key, value]) => {
+    if (key === 'variants') {
+      value.forEach((variant, index) => {
+        Object.entries(variant).forEach(([variantKey, variantValue]) => {
+          if (variantValue === null || variantValue === '') return
+          payload.append(`variants[${index}][${variantKey}]`, typeof variantValue === 'boolean' ? (variantValue ? '1' : '0') : variantValue)
+        })
+      })
+      return
+    }
+
     if (value === null || value === '') {
       return
     }
@@ -219,6 +232,15 @@ export default function Inventory() {
       dosage: medicine.dosage || '',
       side_effects: medicine.side_effects || '',
       price: medicine.price || '',
+      has_variants: Boolean(medicine.has_variants),
+      variants: (medicine.variants || []).map((variant, index) => ({
+        id: variant.id,
+        name: variant.name || '',
+        price: variant.price || '',
+        sku: variant.sku || '',
+        is_active: variant.is_active !== false,
+        sort_order: variant.sort_order ?? index,
+      })),
       minimum_stock: medicine.minimum_stock || '',
       requires_prescription: Boolean(medicine.requires_prescription),
       is_active: Boolean(medicine.is_active),
@@ -244,6 +266,32 @@ export default function Inventory() {
     setForm((current) => ({
       ...current,
       [name]: type === 'checkbox' ? checked : value,
+      ...(name === 'has_variants' && checked && (!current.variants || current.variants.length === 0)
+        ? { variants: [{ name: '', price: '', sku: '', is_active: true, sort_order: 0 }] }
+        : {}),
+    }))
+  }
+
+  const addVariant = () => {
+    setForm((current) => ({
+      ...current,
+      variants: [...(current.variants || []), { name: '', price: '', sku: '', is_active: true, sort_order: current.variants?.length || 0 }],
+    }))
+  }
+
+  const updateVariant = (index, field, value) => {
+    setForm((current) => ({
+      ...current,
+      variants: (current.variants || []).map((variant, variantIndex) => (
+        variantIndex === index ? { ...variant, [field]: value } : variant
+      )),
+    }))
+  }
+
+  const removeVariant = (index) => {
+    setForm((current) => ({
+      ...current,
+      variants: (current.variants || []).filter((_, variantIndex) => variantIndex !== index),
     }))
   }
 
@@ -253,6 +301,17 @@ export default function Inventory() {
     setError('')
 
     try {
+      if (form.has_variants) {
+        const activeVariants = (form.variants || []).filter((variant) => variant.is_active !== false)
+        const variantNames = activeVariants.map((variant) => variant.name.trim().toLowerCase())
+        const hasDuplicate = variantNames.some((name, index) => name && variantNames.indexOf(name) !== index)
+
+        if (activeVariants.length === 0 || activeVariants.some((variant) => !variant.name.trim() || Number(variant.price) <= 0) || hasDuplicate) {
+          setError('Varian wajib minimal 1, nama wajib diisi, harga harus lebih dari 0, dan nama tidak boleh duplikat.')
+          return
+        }
+      }
+
       const payload = new FormData()
       appendMedicinePayload(payload, form, imageFile)
 
@@ -420,6 +479,7 @@ export default function Inventory() {
   const editBatch = (batch) => {
     setEditingBatch(batch)
     setBatchForm({
+      medicine_variant_id: batch.medicine_variant_id || '',
       batch_number: batch.batch_number || '',
       expired_date: batch.expired_date?.slice(0, 10) || '',
       quantity: batch.quantity || '',
@@ -441,6 +501,7 @@ export default function Inventory() {
       if (editingBatch) {
         await api.put(`/medicine-batches/${editingBatch.id}`, {
           ...batchForm,
+          medicine_variant_id: batchForm.medicine_variant_id || null,
           purchase_price: batchForm.purchase_price || null,
         })
         showToast({ message: 'Batch berhasil diperbarui.' })
@@ -448,6 +509,7 @@ export default function Inventory() {
         await api.post('/medicine-batches', {
           medicine_id: selectedMedicineLive.id,
           ...batchForm,
+          medicine_variant_id: batchForm.medicine_variant_id || null,
           purchase_price: batchForm.purchase_price || null,
         })
         showToast({ message: 'Batch berhasil ditambahkan.' })
@@ -663,12 +725,15 @@ export default function Inventory() {
           form={form}
           imageFile={imageFile}
           imagePreview={imagePreview}
+          onAddVariant={addVariant}
           onChange={handleFormChange}
           onClose={() => setModalOpen(false)}
           onDraftList={openDraftModal}
+          onRemoveVariant={removeVariant}
           onImageSelect={handleImageSelect}
           onSaveDraft={saveDraft}
           onSubmit={handleSubmit}
+          onVariantChange={updateVariant}
           saving={saving}
           suppliers={suppliers}
         />
@@ -851,12 +916,15 @@ function MedicineFormModal({
   form,
   imageFile,
   imagePreview,
+  onAddVariant,
   onChange,
   onClose,
   onDraftList,
   onImageSelect,
+  onRemoveVariant,
   onSaveDraft,
   onSubmit,
+  onVariantChange,
   saving,
   suppliers,
 }) {
@@ -870,7 +938,41 @@ function MedicineFormModal({
         <form className="grid gap-4 p-5" onSubmit={onSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Nama Obat" name="name" value={form.name} onChange={onChange} required />
-            <Field label="Harga" name="price" type="number" value={form.price} onChange={onChange} required />
+            <Field disabled={form.has_variants} label="Harga" name="price" type="number" value={form.price} onChange={onChange} required={!form.has_variants} />
+            <div className="rounded-lg border border-outline-variant bg-surface-container-low px-4 py-3 md:col-span-2">
+              <label className="flex items-center gap-2 text-sm font-bold">
+                <input name="has_variants" type="checkbox" checked={form.has_variants} onChange={onChange} />
+                Obat memiliki beberapa varian
+              </label>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                Jika dicentang, harga utama tidak perlu diisi. Harga katalog memakai harga varian.
+              </p>
+              {form.has_variants && (
+                <section className="mt-4 rounded-xl border border-outline-variant bg-white p-4">
+                  <div>
+                    <h3 className="text-sm font-bold">Daftar Varian</h3>
+                    <p className="mt-1 text-xs text-on-surface-variant">Harga dan stok pelanggan mengikuti varian yang dipilih.</p>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {(form.variants || []).map((variant, index) => (
+                      <div className="grid gap-3 rounded-lg bg-surface-container-low p-3 md:grid-cols-[1fr_1fr_1fr_auto_auto]" key={variant.id || index}>
+                        <Field compact label="Nama Varian" name={`variant-name-${index}`} value={variant.name} onChange={(event) => onVariantChange(index, 'name', event.target.value)} required />
+                        <Field compact label="Harga Varian" name={`variant-price-${index}`} type="number" value={variant.price} onChange={(event) => onVariantChange(index, 'price', event.target.value)} required />
+                        <Field compact label="SKU" name={`variant-sku-${index}`} value={variant.sku || ''} onChange={(event) => onVariantChange(index, 'sku', event.target.value)} />
+                        <label className="mt-auto flex items-center gap-2 text-sm font-semibold">
+                          <input checked={variant.is_active !== false} type="checkbox" onChange={(event) => onVariantChange(index, 'is_active', event.target.checked)} />
+                          Aktif
+                        </label>
+                        <button className="mt-auto rounded-lg border border-error px-3 py-2 text-sm font-bold text-error" type="button" onClick={() => onRemoveVariant(index)}>Hapus</button>
+                      </div>
+                    ))}
+                    <button className="rounded-lg border border-primary px-4 py-2 text-sm font-bold text-primary" type="button" onClick={onAddVariant}>
+                      + Tambah Varian
+                    </button>
+                  </div>
+                </section>
+              )}
+            </div>
             <SelectField label="Kategori" name="category_id" value={form.category_id} onChange={onChange} required options={categories} />
             <SelectField label="Supplier" name="supplier_id" value={form.supplier_id} onChange={onChange} options={suppliers} placeholder="Tanpa supplier" />
             <Field label="Minimum Stock" name="minimum_stock" type="number" value={form.minimum_stock} onChange={onChange} />
@@ -941,11 +1043,11 @@ function BatchModal({
         <div className="p-5">
           <div className="overflow-hidden rounded-lg border border-outline-variant">
             <table className="w-full text-left text-sm">
-              <thead className="bg-surface-container-low font-bold"><tr><th className="p-3">Batch</th><th className="p-3">Kadaluarsa</th><th className="p-3">Qty</th><th className="p-3">Harga Beli</th>{isAdmin && <th className="p-3 text-right">Aksi</th>}</tr></thead>
+              <thead className="bg-surface-container-low font-bold"><tr><th className="p-3">Batch</th>{medicine.has_variants && <th className="p-3">Varian</th>}<th className="p-3">Kadaluarsa</th><th className="p-3">Qty</th><th className="p-3">Harga Beli</th>{isAdmin && <th className="p-3 text-right">Aksi</th>}</tr></thead>
               <tbody className="divide-y">
                 {(medicine.batches || []).map((batch) => (
                   <tr key={batch.id}>
-                    <td className="p-3">{batch.batch_number}</td><td className="p-3">{batch.expired_date}</td><td className="p-3">{batch.quantity}</td><td className="p-3">{formatCurrency(batch.purchase_price)}</td>
+                    <td className="p-3">{batch.batch_number}</td>{medicine.has_variants && <td className="p-3">{batch.variant?.name || '-'}</td>}<td className="p-3">{batch.expired_date}</td><td className="p-3">{batch.quantity}</td><td className="p-3">{formatCurrency(batch.purchase_price)}</td>
                     {isAdmin && (
                       <td className="p-3 text-right">
                         <Tooltip label="Edit Batch"><button className="p-2 hover:text-primary" type="button" onClick={() => onEditBatch(batch)}><span className="material-symbols-outlined">edit</span></button></Tooltip>
@@ -954,13 +1056,16 @@ function BatchModal({
                     )}
                   </tr>
                 ))}
-                {(medicine.batches || []).length === 0 && <tr><td className="p-4 text-center text-on-surface-variant" colSpan={isAdmin ? 5 : 4}>Belum ada batch.</td></tr>}
+                {(medicine.batches || []).length === 0 && <tr><td className="p-4 text-center text-on-surface-variant" colSpan={isAdmin ? (medicine.has_variants ? 6 : 5) : (medicine.has_variants ? 5 : 4)}>Belum ada batch.</td></tr>}
               </tbody>
             </table>
           </div>
           {isAdmin && (
             <form className="mt-5 grid gap-3 rounded-lg bg-surface-container-low p-4 md:grid-cols-5" onSubmit={onSubmitBatch}>
               <Field label="Batch" name="batch_number" value={batchForm.batch_number} onChange={onBatchChange} required compact />
+              {medicine.has_variants && (
+                <SelectField compact label="Varian" name="medicine_variant_id" value={batchForm.medicine_variant_id} onChange={onBatchChange} required options={medicine.variants || []} />
+              )}
               <Field label="Kadaluarsa" min={new Date().toISOString().slice(0, 10)} name="expired_date" type="date" value={batchForm.expired_date} onChange={onBatchChange} required compact />
               <Field label="Qty" name="quantity" type="number" value={batchForm.quantity} onChange={onBatchChange} required compact />
               <Field label="Harga Beli" name="purchase_price" type="number" value={batchForm.purchase_price} onChange={onBatchChange} compact />
@@ -976,8 +1081,8 @@ function BatchModal({
   )
 }
 
-function Field({ compact = false, label, min, name, onChange, required = false, type = 'text', value }) {
-  return <label className="text-sm font-semibold">{label}<input className={`mt-1 w-full rounded-lg border border-outline-variant px-4 font-normal outline-none focus:border-primary ${compact ? 'py-2' : 'py-2.5'}`} min={min} name={name} type={type} value={value} onChange={onChange} required={required} /></label>
+function Field({ compact = false, disabled = false, label, min, name, onChange, required = false, type = 'text', value }) {
+  return <label className="text-sm font-semibold">{label}<input className={`mt-1 w-full rounded-lg border border-outline-variant px-4 font-normal outline-none focus:border-primary disabled:bg-surface-container-low disabled:text-on-surface-variant ${compact ? 'py-2' : 'py-2.5'}`} disabled={disabled} min={min} name={name} type={type} value={value} onChange={onChange} required={required} /></label>
 }
 
 function SelectField({ label, name, onChange, options, placeholder = 'Pilih', required = false, value }) {

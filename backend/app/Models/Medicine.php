@@ -22,6 +22,7 @@ class Medicine extends Model
         'dosage',
         'side_effects',
         'price',
+        'has_variants',
         'minimum_stock',
         'requires_prescription',
         'image',
@@ -30,6 +31,7 @@ class Medicine extends Model
 
     protected $casts = [
         'price' => 'decimal:2',
+        'has_variants' => 'boolean',
         'minimum_stock' => 'integer',
         'requires_prescription' => 'boolean',
         'is_active' => 'boolean',
@@ -55,6 +57,14 @@ class Medicine extends Model
         return $this->hasMany(MedicineBatch::class);
     }
 
+    public function variants(): HasMany
+    {
+        return $this->hasMany(MedicineVariant::class)
+            ->orderByRaw('sort_order IS NULL')
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
+
     public function getImageUrlAttribute(): ?string
     {
         return $this->image ? asset('storage/'.$this->image) : null;
@@ -62,15 +72,31 @@ class Medicine extends Model
 
     public function getTotalStockAttribute(): int
     {
+        if ($this->has_variants) {
+            if ($this->relationLoaded('variants')) {
+                return (int) $this->variants
+                    ->where('is_active', true)
+                    ->sum(fn (MedicineVariant $variant): int => $variant->stock);
+            }
+
+            return (int) $this->batches()
+                ->whereHas('variant', fn ($query) => $query->where('is_active', true))
+                ->whereDate('expired_date', '>=', now()->toDateString())
+                ->where('quantity', '>', 0)
+                ->sum('quantity');
+        }
+
         if ($this->relationLoaded('batches')) {
             return (int) $this->batches
                 ->filter(fn (MedicineBatch $batch): bool => ! $batch->trashed()
+                    && $batch->medicine_variant_id === null
                     && $batch->expired_date->gte(now()->startOfDay())
                     && $batch->quantity > 0)
                 ->sum('quantity');
         }
 
         return (int) $this->batches()
+            ->whereNull('medicine_variant_id')
             ->whereDate('expired_date', '>=', now()->toDateString())
             ->where('quantity', '>', 0)
             ->sum('quantity');

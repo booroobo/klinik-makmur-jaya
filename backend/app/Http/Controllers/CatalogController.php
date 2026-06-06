@@ -12,7 +12,11 @@ class CatalogController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Medicine::query()
-            ->with(['category', 'supplier'])
+            ->with([
+                'category',
+                'supplier',
+                'variants' => fn ($query) => $query->where('is_active', true)->with('batches'),
+            ])
             ->withSum([
                 'batches as available_stock_sum' => fn ($query) => $query
                     ->whereDate('expired_date', '>=', now()->toDateString())
@@ -27,10 +31,19 @@ class CatalogController extends Controller
             'CASE WHEN EXISTS (
                 SELECT 1
                 FROM medicine_batches
+                LEFT JOIN medicine_variants
+                    ON medicine_variants.id = medicine_batches.medicine_variant_id
                 WHERE medicine_batches.medicine_id = medicines.id
                     AND medicine_batches.expired_date >= ?
                     AND medicine_batches.quantity > 0
                     AND medicine_batches.deleted_at IS NULL
+                    AND (
+                        (medicines.has_variants = false AND medicine_batches.medicine_variant_id IS NULL)
+                        OR
+                        (medicines.has_variants = true
+                            AND medicine_variants.is_active = true
+                            AND medicine_variants.deleted_at IS NULL)
+                    )
             ) THEN 0 ELSE 1 END',
             [now()->toDateString()],
         );
@@ -113,7 +126,9 @@ class CatalogController extends Controller
             ->with([
                 'category',
                 'supplier',
+                'variants' => fn ($query) => $query->where('is_active', true)->with('batches'),
                 'batches' => fn ($query) => $query
+                    ->with('variant')
                     ->whereDate('expired_date', '>=', now()->toDateString())
                     ->orderBy('expired_date'),
             ])

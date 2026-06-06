@@ -14,6 +14,7 @@ class MedicineBatch extends Model
 
     protected $fillable = [
         'medicine_id',
+        'medicine_variant_id',
         'batch_number',
         'expired_date',
         'quantity',
@@ -29,6 +30,11 @@ class MedicineBatch extends Model
     public function medicine(): BelongsTo
     {
         return $this->belongsTo(Medicine::class);
+    }
+
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(MedicineVariant::class, 'medicine_variant_id');
     }
 
     public function orderItemUsages(): HasMany

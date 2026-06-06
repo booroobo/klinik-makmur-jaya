@@ -241,7 +241,7 @@ function OrderDetailPanel({ actionLoading, detailLoading, isAdmin, onCancel, onP
       <div className="mb-6 space-y-3 text-sm">
         {order.items?.map((item) => (
           <div key={item.id} className="rounded-lg bg-surface-container-low p-3">
-            <div className="flex justify-between gap-3"><span className="font-bold">{item.medicine_name}</span><span>{formatCurrency(item.subtotal)}</span></div>
+            <div className="flex justify-between gap-3"><span className="font-bold">{item.medicine_name}{item.variant_name ? ` — ${item.variant_name}` : ''}</span><span>{formatCurrency(item.subtotal)}</span></div>
             <p className="mt-1 text-xs text-on-surface-variant">{item.quantity} x {formatCurrency(item.price)}</p>
             {item.batch_usages?.length > 0 && <div className="mt-2 text-xs text-on-surface-variant">Batch: {item.batch_usages.map((usage) => (usage.medicine_batch?.batch_number || usage.medicine_batch_id) + ' (' + usage.quantity + ')').join(', ')}</div>}
           </div>

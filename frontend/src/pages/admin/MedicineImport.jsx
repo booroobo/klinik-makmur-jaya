@@ -73,7 +73,7 @@ export default function MedicineImport() {
           <section className="rounded-xl border border-outline-variant bg-white p-6 shadow-sm">
             <h2 className="mb-2 text-xl font-bold">Format CSV</h2>
             <p className="text-sm text-on-surface-variant">
-              Kolom wajib: <strong>name, category, price</strong>. Kolom opsional: supplier, description, composition, dosage, side_effects, minimum_stock, requires_prescription, is_active, batch_number, expired_date, quantity, purchase_price.
+              Kolom wajib: <strong>name, category</strong>. Untuk obat tanpa varian, isi <strong>price</strong>. Untuk obat bervarian, isi <strong>has_variants, variant_name, variant_price</strong>. Kolom opsional: supplier, description, composition, dosage, side_effects, minimum_stock, requires_prescription, is_active, variant_sku, variant_is_active, variant_sort_order, batch_number, expired_date, quantity, purchase_price.
             </p>
             <form className="mt-5 flex flex-col gap-4 md:flex-row md:items-end" onSubmit={submitImport}>
               <label className="flex-1 text-sm font-semibold">

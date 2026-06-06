@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Medicine;
 use App\Models\MedicineBatch;
 use App\Models\MedicineImport;
+use App\Models\MedicineVariant;
 use App\Models\Supplier;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -137,7 +138,7 @@ class ImportMedicinesJob implements ShouldQueue
      */
     private function validateHeaders(array $headers): void
     {
-        $required = ['name', 'category', 'price'];
+        $required = ['name', 'category'];
         $missing = array_diff($required, $headers);
 
         if ($missing !== []) {
@@ -153,9 +154,20 @@ class ImportMedicinesJob implements ShouldQueue
         $name = trim((string) ($row['name'] ?? ''));
         $categoryName = trim((string) ($row['category'] ?? ''));
         $price = $this->number($row['price'] ?? null);
+        $variantName = trim((string) ($row['variant_name'] ?? $row['variant'] ?? ''));
+        $variantPrice = $this->number($row['variant_price'] ?? null);
+        $hasVariants = $this->boolean($row['has_variants'] ?? ($variantName !== ''));
 
-        if ($name === '' || $categoryName === '' || $price < 0) {
-            throw new \InvalidArgumentException('Nama, kategori, dan harga wajib valid.');
+        if ($name === '' || $categoryName === '') {
+            throw new \InvalidArgumentException('Nama dan kategori wajib diisi.');
+        }
+
+        if ($hasVariants && ($variantName === '' || $variantPrice <= 0)) {
+            throw new \InvalidArgumentException('variant_name dan variant_price wajib valid untuk obat bervarian.');
+        }
+
+        if (! $hasVariants && $price < 0) {
+            throw new \InvalidArgumentException('Harga wajib valid.');
         }
 
         $category = Category::firstOrCreate(['name' => $categoryName]);
@@ -175,12 +187,43 @@ class ImportMedicinesJob implements ShouldQueue
                 'composition' => $row['composition'] ?? null,
                 'dosage' => $row['dosage'] ?? null,
                 'side_effects' => $row['side_effects'] ?? null,
-                'price' => $price,
+                'price' => $hasVariants ? max($variantPrice, 0) : $price,
+                'has_variants' => $hasVariants,
                 'minimum_stock' => (int) $this->number($row['minimum_stock'] ?? 0),
                 'requires_prescription' => $this->boolean($row['requires_prescription'] ?? false),
                 'is_active' => $this->boolean($row['is_active'] ?? true),
             ],
         );
+
+        $variant = null;
+
+        if ($hasVariants) {
+            $variant = MedicineVariant::withTrashed()->firstOrNew([
+                'medicine_id' => $medicine->id,
+                'name' => $variantName,
+            ]);
+
+            if ($variant->trashed()) {
+                $variant->restore();
+            }
+
+            $variant->fill([
+                'price' => $variantPrice,
+                'sku' => filled($row['variant_sku'] ?? null) ? trim((string) $row['variant_sku']) : $variant->sku,
+                'is_active' => $this->boolean($row['variant_is_active'] ?? true),
+                'sort_order' => isset($row['variant_sort_order']) && $row['variant_sort_order'] !== ''
+                    ? (int) $this->number($row['variant_sort_order'])
+                    : $variant->sort_order,
+            ])->save();
+
+            $lowestVariantPrice = (float) $medicine->variants()
+                ->where('is_active', true)
+                ->min('price');
+
+            if ($lowestVariantPrice > 0 && (float) $medicine->price !== $lowestVariantPrice) {
+                $medicine->update(['price' => $lowestVariantPrice]);
+            }
+        }
 
         $batchNumber = trim((string) ($row['batch_number'] ?? ''));
         $expiredDate = trim((string) ($row['expired_date'] ?? ''));
@@ -189,9 +232,11 @@ class ImportMedicinesJob implements ShouldQueue
             MedicineBatch::updateOrCreate(
                 [
                     'medicine_id' => $medicine->id,
+                    'medicine_variant_id' => $variant?->id,
                     'batch_number' => $batchNumber,
                 ],
                 [
+                    'medicine_variant_id' => $variant?->id,
                     'expired_date' => $expiredDate,
                     'quantity' => (int) $this->number($row['quantity'] ?? 0),
                     'purchase_price' => $this->number($row['purchase_price'] ?? 0),

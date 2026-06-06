@@ -106,7 +106,7 @@ export default function OrderDetail() {
                     {order.items.map((item) => (
                       <article key={item.id} className="flex justify-between gap-4 p-6">
                         <div>
-                          <p className="font-bold">{item.medicine_name}</p>
+                          <p className="font-bold">{item.medicine_name}{item.variant_name ? ` — ${item.variant_name}` : ''}</p>
                           <p className="mt-1 text-sm text-on-surface-variant">{item.quantity} x {formatCurrency(item.price)}</p>
                           {item.requires_prescription && <span className="mt-2 inline-flex rounded-full bg-error-container px-2 py-0.5 text-[10px] font-bold text-on-error-container">BUTUH RESEP</span>}
                         </div>

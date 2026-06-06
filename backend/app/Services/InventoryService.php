@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\InsufficientStockException;
 use App\Models\Medicine;
 use App\Models\MedicineBatch;
+use App\Models\MedicineVariant;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemBatch;
@@ -12,12 +13,15 @@ use Illuminate\Database\Eloquent\Collection;
 
 class InventoryService
 {
-    public function availableStock(Medicine|int $medicine): int
+    public function availableStock(Medicine|int $medicine, MedicineVariant|int|null $variant = null): int
     {
         $medicineId = $medicine instanceof Medicine ? $medicine->id : $medicine;
+        $variantId = $variant instanceof MedicineVariant ? $variant->id : $variant;
 
         return (int) MedicineBatch::query()
             ->where('medicine_id', $medicineId)
+            ->when($variantId !== null, fn ($query) => $query->where('medicine_variant_id', $variantId))
+            ->when($variantId === null, fn ($query) => $query->whereNull('medicine_variant_id'))
             ->whereDate('expired_date', '>=', now()->toDateString())
             ->where('quantity', '>', 0)
             ->sum('quantity');
@@ -26,9 +30,9 @@ class InventoryService
     /**
      * @return array<int, array{batch: MedicineBatch, quantity: int}>
      */
-    public function prepareFifoAllocation(Medicine $medicine, int $quantity): array
+    public function prepareFifoAllocation(Medicine $medicine, int $quantity, ?MedicineVariant $variant = null): array
     {
-        $batches = $this->lockAvailableBatches($medicine->id);
+        $batches = $this->lockAvailableBatches($medicine->id, $variant?->id);
         $availableStock = (int) $batches->sum('quantity');
 
         if ($availableStock < $quantity) {
@@ -108,10 +112,12 @@ class InventoryService
     /**
      * @return Collection<int, MedicineBatch>
      */
-    private function lockAvailableBatches(int $medicineId): Collection
+    private function lockAvailableBatches(int $medicineId, ?int $variantId = null): Collection
     {
         return MedicineBatch::query()
             ->where('medicine_id', $medicineId)
+            ->when($variantId !== null, fn ($query) => $query->where('medicine_variant_id', $variantId))
+            ->when($variantId === null, fn ($query) => $query->whereNull('medicine_variant_id'))
             ->whereDate('expired_date', '>=', now()->toDateString())
             ->where('quantity', '>', 0)
             ->orderBy('expired_date')
