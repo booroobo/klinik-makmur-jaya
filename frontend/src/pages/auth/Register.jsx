@@ -145,7 +145,7 @@ export default function Register() {
                   {errors.password && <p className="text-xs font-semibold text-error">{errors.password}</p>}
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-semibold" htmlFor="password_confirmation">Konfirmasi</label>
+                  <label className="text-sm font-semibold" htmlFor="password_confirmation">Konfirmasi Password</label>
                   <input required className="w-full rounded-lg border border-outline px-4 py-3" id="password_confirmation" name="password_confirmation" type="password" value={form.password_confirmation} onChange={handleChange} />
                   {errors.password_confirmation && <p className="text-xs font-semibold text-error">{errors.password_confirmation}</p>}
                 </div>

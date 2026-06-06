@@ -51,7 +51,7 @@ export default function Sidebar({ active }) {
         <h1 className="text-xl font-bold text-primary">Klinik MJ</h1>
         <p className="text-xs text-on-surface-variant">{roleLabel}</p>
       </div>
-      <nav className="flex-grow space-y-1 overflow-y-auto min-h-0 custom-scrollbar">
+      <nav className="flex-grow space-y-1">
         {visibleNavItems.map((item) => (
           <Link
             key={item.id}
@@ -77,12 +77,6 @@ export default function Sidebar({ active }) {
         </button>
       )}
       <div className="mt-auto space-y-1 border-t border-outline-variant pt-4">
-        <a
-          href="#bantuan"
-          className="flex items-center gap-3 px-3 py-2 text-sm text-on-surface-variant transition-all hover:bg-surface-container-high"
-        >
-          <span className="material-symbols-outlined">help</span> Bantuan
-        </a>
         <button
           className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-error transition-all hover:bg-error-container"
           type="button"
