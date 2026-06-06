@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import api from '../../api/axios'
 import Footer from '../../components/Footer'
 import { useAuth } from '../../context/AuthContext'
+import { resendVerificationEmail } from '../../utils/emailVerification'
 import { consumeSessionExpiredMessage } from '../../utils/session'
 
 const roleRedirects = {
@@ -24,7 +26,10 @@ export default function Login() {
   const [searchParams] = useSearchParams()
   const [form, setForm] = useState({ email: '', password: '' })
   const [error, setError] = useState(() => consumeSessionExpiredMessage())
+  const [resendMessage, setResendMessage] = useState('')
+  const [canResendVerification, setCanResendVerification] = useState(searchParams.get('verification') === 'expired')
   const [submitting, setSubmitting] = useState(false)
+  const [resending, setResending] = useState(false)
   const verificationMessage = searchParams.get('verification') === 'success'
     ? 'Email berhasil diverifikasi. Silakan login.'
     : searchParams.get('verification') === 'expired'
@@ -41,10 +46,15 @@ export default function Login() {
       ...current,
       [event.target.name]: event.target.value,
     }))
+    if (event.target.name === 'email') {
+      setResendMessage('')
+    }
   }
 
   const submitLogin = async (credentials) => {
     setError('')
+    setResendMessage('')
+    setCanResendVerification(false)
     setSubmitting(true)
 
     try {
@@ -52,6 +62,9 @@ export default function Login() {
       const role = session.user?.role?.toLowerCase()
       navigate(roleRedirects[role] || '/catalog', { replace: true })
     } catch (err) {
+      if (err.response?.data?.code === 'email_not_verified') {
+        setCanResendVerification(true)
+      }
       setError(err.response?.data?.message || 'Login gagal. Periksa email dan password.')
     } finally {
       setSubmitting(false)
@@ -69,6 +82,20 @@ export default function Login() {
       email: account.email,
       password: account.password,
     })
+  }
+
+  const handleResendVerification = async () => {
+    setError('')
+    setResendMessage('')
+    setResending(true)
+
+    try {
+      setResendMessage(await resendVerificationEmail(api, form.email))
+    } catch (err) {
+      setError(err.response?.data?.message || 'Gagal mengirim ulang email verifikasi.')
+    } finally {
+      setResending(false)
+    }
   }
 
   return (
@@ -92,6 +119,7 @@ export default function Login() {
               </div>
             )}
             {verificationMessage && !error && <div className="mb-4 rounded-lg border border-primary/20 bg-primary-container px-4 py-3 text-sm font-semibold text-on-primary-container">{verificationMessage}</div>}
+            {resendMessage && <div className="mb-4 rounded-lg border border-primary/20 bg-primary-container px-4 py-3 text-sm font-semibold text-on-primary-container">{resendMessage}</div>}
 
             <form className="space-y-5" onSubmit={handleSubmit}>
               <div className="space-y-1">
@@ -131,6 +159,16 @@ export default function Login() {
                 {submitting ? 'Memproses...' : 'Masuk ke Akun'}
                 <span className="material-symbols-outlined">login</span>
               </button>
+              {canResendVerification && (
+                <button
+                  className="w-full rounded-lg border border-primary px-4 py-3 font-bold text-primary disabled:opacity-50"
+                  type="button"
+                  disabled={resending || !form.email.trim()}
+                  onClick={handleResendVerification}
+                >
+                  {resending ? 'Mengirim ulang...' : 'Kirim ulang email verifikasi'}
+                </button>
+              )}
             </form>
 
             <div className="relative my-8 border-t border-outline-variant">
