@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\Medicine;
+use App\Models\MedicineBatch;
 use App\Models\MedicineImport;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -60,6 +61,49 @@ class MedicineSearchImportTest extends TestCase
         $this->getJson('/api/catalog/medicines/autocomplete?q=paracitamol&limit=5')
             ->assertOk()
             ->assertJsonPath('data.0.name', 'Paracetamol');
+    }
+
+    public function test_catalog_places_out_of_stock_medicines_after_available_medicines(): void
+    {
+        $category = Category::create(['name' => 'Katalog']);
+        $available = Medicine::create([
+            'category_id' => $category->id,
+            'name' => 'Obat Tersedia',
+            'price' => 50000,
+            'minimum_stock' => 0,
+            'requires_prescription' => false,
+            'is_active' => true,
+        ]);
+        $outOfStock = Medicine::create([
+            'category_id' => $category->id,
+            'name' => 'Obat Habis',
+            'price' => 1000,
+            'minimum_stock' => 0,
+            'requires_prescription' => false,
+            'is_active' => true,
+        ]);
+
+        MedicineBatch::create([
+            'medicine_id' => $available->id,
+            'batch_number' => 'AVAILABLE-001',
+            'expired_date' => now()->addMonth()->toDateString(),
+            'quantity' => 10,
+            'purchase_price' => 25000,
+        ]);
+        MedicineBatch::create([
+            'medicine_id' => $outOfStock->id,
+            'batch_number' => 'EXPIRED-001',
+            'expired_date' => now()->subDay()->toDateString(),
+            'quantity' => 100,
+            'purchase_price' => 500,
+        ]);
+
+        $this->getJson('/api/catalog/medicines?sort_price=asc')
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'Obat Tersedia')
+            ->assertJsonPath('data.0.total_stock', 10)
+            ->assertJsonPath('data.1.name', 'Obat Habis')
+            ->assertJsonPath('data.1.total_stock', 0);
     }
 
     public function test_admin_can_upload_csv_import_and_sync_queue_processes_file(): void

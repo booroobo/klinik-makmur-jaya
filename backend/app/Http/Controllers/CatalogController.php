@@ -13,11 +13,27 @@ class CatalogController extends Controller
     {
         $query = Medicine::query()
             ->with(['category', 'supplier'])
-            ->withSum('batches as total_stock_sum', 'quantity')
+            ->withSum([
+                'batches as available_stock_sum' => fn ($query) => $query
+                    ->whereDate('expired_date', '>=', now()->toDateString())
+                    ->where('quantity', '>', 0),
+            ], 'quantity')
             ->where('is_active', true)
             ->when($request->filled('search'), fn ($query) => $query->where('name', 'ilike', '%'.$request->string('search')->toString().'%'))
             ->when($request->filled('category_id'), fn ($query) => $query->where('category_id', $request->integer('category_id')))
             ->when($request->filled('requires_prescription'), fn ($query) => $query->where('requires_prescription', $request->boolean('requires_prescription')));
+
+        $query->orderByRaw(
+            'CASE WHEN EXISTS (
+                SELECT 1
+                FROM medicine_batches
+                WHERE medicine_batches.medicine_id = medicines.id
+                    AND medicine_batches.expired_date >= ?
+                    AND medicine_batches.quantity > 0
+                    AND medicine_batches.deleted_at IS NULL
+            ) THEN 0 ELSE 1 END',
+            [now()->toDateString()],
+        );
 
         if (in_array($request->string('sort_price')->toString(), ['asc', 'desc'], true)) {
             $query->orderBy('price', $request->string('sort_price')->toString());
